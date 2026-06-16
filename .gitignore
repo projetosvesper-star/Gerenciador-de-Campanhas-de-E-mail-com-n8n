@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.screenshots.example
 
 # Bloquear arquivos reais de dados de producao
 *.xlsx
