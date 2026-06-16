@@ -1,0 +1,795 @@
+{
+  "updatedAt": "2026-06-16T17:26:55.936Z",
+  "createdAt": "2026-06-15T14:43:12.819Z",
+  "id": "D0Mpf2r4KXD2IEbK",
+  "name": "Mala Direta",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "path": "mala-direta",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "03df1e4a-0932-482a-9395-6993e324ed79",
+      "name": "Webhook GET - Painel",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        23776,
+        4768
+      ],
+      "webhookId": "031262fe-a1a2-4e70-88c6-f154d6516f3c"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mala-direta-acao",
+        "options": {}
+      },
+      "id": "8c9b50d0-4380-4579-a29f-2f51b3109aa5",
+      "name": "Webhook POST - Ações",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        23776,
+        5440
+      ],
+      "webhookId": "a2065a15-ae85-4520-aadb-2ddc721bb7af"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/clientes_mala_direta_limpo.xlsx",
+        "options": {
+          "fileExtension": "xlsx",
+          "fileName": "clientes_mala_direta_limpo.xlsx",
+          "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      },
+      "id": "9baf3edf-1a5d-4907-b234-716bbfe7f7c9",
+      "name": "Ler Planilha Para Painel",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        24000,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "headerRow": true,
+          "sheetName": "Clientes_Validos"
+        }
+      },
+      "id": "14ad6cf7-a452-469d-a05b-ec13b24b9492",
+      "name": "Extrair XLSX Para Painel",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        24224,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\n\nconst configPath = '/files/mala_config.json';\nconst logsPath = '/files/mala_logs.jsonl';\nconst assinaturaPath = '/files/assinatura_vesper.html';\nconst extrasPath = '/files/clientes_adicionados.json';\nconst gruposPath = '/files/grupos_mala_direta.json';\nconst envioConfigPath = '/files/mala_envio_config.json';\nconst filaPath = '/files/mala_fila_envio.json';\nconst enviadosPath = '/files/mala_campanhas_enviados.json';\nconst acaoUrl = 'http://localhost:5678/webhook/mala-direta-acao';\n\nfunction escapeHtml(value) {\n  return String(value ?? '')\n    .replaceAll('&', '&amp;')\n    .replaceAll('<', '&lt;')\n    .replaceAll('>', '&gt;')\n    .replaceAll('\"', '&quot;')\n    .replaceAll(\"'\", '&#039;');\n}\n\nfunction htmlToText(value) {\n  return String(value ?? '')\n    .replace(/^\\uFEFF/, '')\n    .replace(/<br\\s*\\/?\\s*>/gi, '\\n')\n    .replace(/<\\/p>/gi, '\\n\\n')\n    .replace(/<p[^>]*>/gi, '')\n    .replace(/<[^>]+>/g, '')\n    .replaceAll('&nbsp;', ' ')\n    .replaceAll('&lt;', '<')\n    .replaceAll('&gt;', '>')\n    .replaceAll('&amp;', '&')\n    .replaceAll('&quot;', '\"')\n    .trim();\n}\n\nfunction ensureFiles() {\n  if (!fs.existsSync('/files')) {\n    throw new Error('A pasta /files não existe dentro do container. Verifique o volume C:/n8n/files:/files no docker-compose.yml.');\n  }\n  if (!fs.existsSync(configPath)) {\n    fs.writeFileSync(configPath, JSON.stringify({\n      assunto: 'Comunicado Vesper',\n      mensagem_texto: 'Boa tarde,\\n\\nEscreva aqui a mensagem que será enviada.\\n\\nAtenciosamente,',\n      atualizado_em: new Date().toISOString()\n    }, null, 2), 'utf8');\n  }\n  if (!fs.existsSync(logsPath)) fs.writeFileSync(logsPath, '', 'utf8');\n  if (!fs.existsSync(extrasPath)) fs.writeFileSync(extrasPath, '[]', 'utf8');\n  if (!fs.existsSync(gruposPath)) fs.writeFileSync(gruposPath, '{}', 'utf8');\n  if (!fs.existsSync(envioConfigPath)) fs.writeFileSync(envioConfigPath, JSON.stringify({parcelado_ativo:true,lote_quantidade:50,intervalo_valor:12,intervalo_unidade:'horas'}, null, 2), 'utf8');\n  if (!fs.existsSync(filaPath)) fs.writeFileSync(filaPath, '[]', 'utf8');\n  if (!fs.existsSync(enviadosPath)) fs.writeFileSync(enviadosPath, '{}', 'utf8');\n}\n\nfunction readJson(path, fallback) {\n  try { return JSON.parse(fs.readFileSync(path, 'utf8').replace(/^\\uFEFF/, '')); } catch { return fallback; }\n}\n\nensureFiles();\n\nconst config = readJson(configPath, {\n  assunto: 'Comunicado Vesper',\n  mensagem_texto: 'Boa tarde,\\n\\nEscreva aqui a mensagem que será enviada.\\n\\nAtenciosamente,'\n});\n\nlet mensagemTexto = '';\nif (typeof config.mensagem_texto === 'string' && config.mensagem_texto.trim()) mensagemTexto = config.mensagem_texto;\nelse if (typeof config.mensagem === 'string' && config.mensagem.trim()) mensagemTexto = htmlToText(config.mensagem);\nelse mensagemTexto = 'Boa tarde,\\n\\nEscreva aqui a mensagem que será enviada.\\n\\nAtenciosamente,';\n\nconst assinaturaExiste = fs.existsSync(assinaturaPath);\nlet assinaturaPreview = '';\ntry {\n  assinaturaPreview = fs.readFileSync(assinaturaPath, 'utf8')\n    .replace(/^\\uFEFF/, '')\n    .replace(/<meta[^>]*>/gi, '')\n    .replace(/<link[^>]*>/gi, '')\n    .replace(/href=[\"']www\\.vesper\\.ind\\.br[\"']/gi, 'href=\"http://www.example.com\"');\n} catch {\n  assinaturaPreview = '<p>Atenciosamente,</p><strong style=\"color:red;font-size:20px\">Empresa EX LTDA</strong><br><a href=\"mailto:sender@example.com\">sender@example.com</a><br><a href=\"http://www.example.com\">www.example.com</a>';\n}\n\nconst extras = Array.isArray(readJson(extrasPath, [])) ? readJson(extrasPath, []) : [];\nconst grupos = readJson(gruposPath, {});\nconst envioConfig = readJson(envioConfigPath, {parcelado_ativo:true,lote_quantidade:50,intervalo_valor:12,intervalo_unidade:'horas'});\nif (envioConfig.intervalo_valor === undefined && envioConfig.intervalo_horas !== undefined) envioConfig.intervalo_valor = envioConfig.intervalo_horas;\nif (!envioConfig.intervalo_unidade) envioConfig.intervalo_unidade = 'horas';\nconst enviadosCampanhas = readJson(enviadosPath, {});\nfunction hashCampanhaTexto(assunto, mensagem) {\n  const texto = String(assunto || '') + '\\n' + String(mensagem || '');\n  let h = 2166136261;\n  for (let i = 0; i < texto.length; i++) {\n    h ^= texto.charCodeAt(i);\n    h = Math.imul(h, 16777619);\n  }\n  return (h >>> 0).toString(16).padStart(8, '0');\n}\nfunction campaignIdLocal(assunto, mensagem) {\n  return hashCampanhaTexto(String(assunto || '') + '\\n' + String(mensagem || ''), '');\n}\nconst campanhaAtualId = campaignIdLocal(config.assunto || 'Comunicado Vesper', mensagemTexto);\nconst enviadosCampanhaAtual = enviadosCampanhas[campanhaAtualId]?.emails || {};\nconst totalJaEnviadosCampanha = Object.keys(enviadosCampanhaAtual).length;\nconst anexosPadrao = Array.isArray(config.anexos_base64) ? config.anexos_base64 : [];\nconst totalAnexosPadrao = anexosPadrao.length;\nconst filaEnvio = Array.isArray(readJson(filaPath, [])) ? readJson(filaPath, []) : [];\nconst totalFilaCampanhas = filaEnvio.length;\nconst totalFilaContatos = filaEnvio.reduce((s,c)=>s+(Array.isArray(c.contatos)?c.contatos.length:0),0);\nconst proximoLote = filaEnvio.map(c=>c.proxima_execucao).filter(Boolean).sort()[0] || 'Nenhum lote pendente';\nconst gruposNomes = Object.keys(grupos || {}).sort((a,b)=>a.localeCompare(b,'pt-BR'));\nconst gruposOptions = gruposNomes.map(g => `<option value=\"${escapeHtml(g)}\">${escapeHtml(g)}</option>`).join('');\nconst gruposCards = gruposNomes.map(g => `<button type=\"button\" class=\"group-card group-card-btn\" data-grupo-card=\"${escapeHtml(g)}\"><div><b>${escapeHtml(g)}</b><small>${(Array.isArray(grupos[g]) ? grupos[g].length : 0)} contatos salvos</small></div><span class=\"chip\">abrir</span></button>`).join('') || '<div class=\"group-card\"><div><b>Nenhum grupo criado ainda</b><small>Crie um grupo ou importe contatos para organizar os envios.</small></div></div>';\nconst logs = (() => {\n  try {\n    const content = fs.readFileSync(logsPath, 'utf8').trim();\n    if (!content) return [];\n    return content.split(/\\r?\\n/).filter(Boolean).map(line => {\n      try { return JSON.parse(line); } catch { return null; }\n    }).filter(Boolean).reverse();\n  } catch { return []; }\n})();\n\n\nconst rows = $input.all();\nconst clientesMap = new Map();\n\nfunction garantirCliente(empresa, email, origem) {\n  empresa = String(empresa || '').trim();\n  email = String(email || '').trim().toLowerCase();\n  if (!empresa || !email || !email.includes('@')) return null;\n  if (!clientesMap.has(email)) clientesMap.set(email, { empresa, email, origem, grupos: [] });\n  const c = clientesMap.get(email);\n  if ((!c.empresa || c.empresa === email.split('@')[0]) && empresa) c.empresa = empresa;\n  if (origem === 'manual') c.origem = 'manual';\n  return c;\n}\n\nfunction addGrupo(email, grupo) {\n  email = String(email || '').trim().toLowerCase();\n  grupo = String(grupo || '').trim();\n  if (!email || !grupo || !clientesMap.has(email)) return;\n  const c = clientesMap.get(email);\n  if (!c.grupos.includes(grupo)) c.grupos.push(grupo);\n}\n\nfor (const item of rows) {\n  const row = item.json || {};\n  garantirCliente(row.empresa || row.Empresa || row.nome || row.Nome || row.cliente || row.Cliente || '', row.email || row.Email || row.e_mail || row['e-mail'] || '', 'planilha');\n}\n\nfor (const item of extras) {\n  const c = garantirCliente(item.empresa || item.nome || '', item.email || '', 'manual');\n  if (c && item.grupo) addGrupo(c.email, item.grupo);\n}\n\nfor (const [grupo, emails] of Object.entries(grupos || {})) {\n  for (const email of (Array.isArray(emails) ? emails : [])) {\n    if (clientesMap.has(String(email).toLowerCase())) addGrupo(email, grupo);\n  }\n}\n\nconst clientes = [...clientesMap.values()].sort((a, b) => a.empresa.localeCompare(b.empresa, 'pt-BR'));\n\nconst totalClientes = clientes.length;\nconst totalExtras = extras.length;\nconst totalGrupos = gruposNomes.length;\nconst totalSucesso = logs.filter(l => l.status === 'sucesso').length;\nconst totalErro = logs.filter(l => l.status === 'erro').length;\nconst ultimaAcao = logs[0]?.data_hora || 'Nenhum envio ainda';\nconst logsRecentes = logs.slice(0, 8);\n\nconst clienteRows = clientes.map((c, idx) => {\n  const value = `${c.email}||${c.empresa}`;\n  const badge = c.origem === 'manual' ? '<span class=\"badge-new\">adicionado</span>' : '';\n  const gruposTxt = (c.grupos || []).join(', ');\n  const gruposData = (c.grupos || []).map(g => g.toLowerCase()).join('|');\n  return `<tr class=\"linha-cliente\" data-email=\"${escapeHtml(c.email)}\" data-original-order=\"${idx}\" data-groups=\"${escapeHtml(gruposData)}\" data-search=\"${escapeHtml((c.empresa + ' ' + c.email + ' ' + gruposTxt).toLowerCase())}\"><td><input type=\"checkbox\" name=\"selecionados\" value=\"${escapeHtml(value)}\"></td><td>${idx + 1}</td><td>${escapeHtml(c.empresa)} ${badge}</td><td>${escapeHtml(c.email)}</td><td>${escapeHtml(gruposTxt || 'Geral')}</td></tr>`;\n}).join('');\n\nconst logRows = logsRecentes.map(log => `<tr><td>${escapeHtml(log.data_hora)}</td><td>${escapeHtml(log.empresa)}</td><td>${escapeHtml(log.email)}</td><td><span class=\"status ${log.status === 'sucesso' ? 'ok' : 'erro'}\">${log.status === 'sucesso' ? 'enviado' : 'erro'}</span></td></tr>`).join('');\n\nconst html = `<!DOCTYPE html><html lang=\"pt-BR\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>Mala Direta Vesper</title><style>\n:root{color-scheme:light;--bg:#f4f7fb;--surface:#fff;--text:#162033;--muted:#5f6f86;--line:#dbe5f2;--line2:#c8d6ea;--blue:#2563eb;--green:#16a34a;--orange:#f97316;--purple:#7c3aed;--red:#dc2626;--shadow:0 22px 55px rgba(18,34,64,.12);--radius:24px}*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#f7faff 0%,#eef4fb 100%);color:var(--text)}.wrap{max-width:1220px;margin:0 auto;padding:26px}.hero{background:linear-gradient(135deg,#ffffff 0%,#f6f9ff 100%);border:1px solid var(--line);border-radius:32px;padding:28px;box-shadow:var(--shadow);margin-bottom:20px}.hero-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:20px;align-items:center}.brand{display:flex;align-items:center;gap:18px}.brand-icon{width:76px;height:76px;border-radius:24px;background:linear-gradient(135deg,#2563eb,#60a5fa);display:flex;align-items:center;justify-content:center;font-size:36px;color:#fff;box-shadow:0 18px 35px rgba(37,99,235,.25)}h1{margin:0 0 8px;font-size:40px;letter-spacing:-.04em}.hero-sub{font-size:18px;line-height:1.55;color:var(--muted);max-width:690px}.chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.chip{padding:9px 12px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:13px;font-weight:800;color:#28415f}.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px}.stat{background:#fff;border:1px solid var(--line);border-radius:22px;padding:17px 18px;box-shadow:0 12px 26px rgba(18,34,64,.06)}.stat small{display:block;color:var(--muted);font-size:13px;margin-bottom:8px}.stat b{font-size:26px;line-height:1.1}.main-actions{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:18px}.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px;box-shadow:var(--shadow)}.action-card{min-height:230px;display:flex;flex-direction:column;justify-content:space-between}.icon{width:54px;height:54px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:25px;margin-bottom:16px}.icon.blue{background:#eff6ff;color:var(--blue)}.icon.purple{background:#f5f3ff;color:var(--purple)}.icon.green{background:#ecfdf3;color:var(--green)}.icon.orange{background:#fff7ed;color:var(--orange)}h2{margin:0 0 8px;font-size:26px;letter-spacing:-.03em}h3{margin:0 0 9px;font-size:21px;letter-spacing:-.02em}p{margin:0}.muted{color:var(--muted);font-size:15px;line-height:1.55}button{border:0;border-radius:16px;padding:14px 17px;font-size:15px;font-weight:900;color:#fff;cursor:pointer;box-shadow:0 12px 24px rgba(18,34,64,.13)}.btn-blue{background:var(--blue)}.btn-purple{background:var(--purple)}.btn-green{background:var(--green)}.btn-orange{background:var(--orange)}.secondary{background:#fff;color:#28415f;border:1px solid var(--line);box-shadow:none}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:#fff}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#f8fbff;color:#39516d}.status{font-weight:950}.status.ok{color:var(--green)}.status.erro{color:var(--red)}.badge-new{display:inline-block;padding:3px 8px;border-radius:999px;background:#ecfdf3;border:1px solid #bbf7d0;color:#16803d;font-size:11px;font-weight:900;vertical-align:middle}.modal{position:fixed;inset:0;background:rgba(20,33,53,.42);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}.modal.open,.modal:target{display:flex}.modal-box{width:min(980px,100%);max-height:min(92vh,900px);overflow:auto;background:#fff;border:1px solid var(--line);border-radius:30px;padding:26px;box-shadow:0 30px 90px rgba(18,34,64,.25);position:relative}.modal-close{position:absolute;text-decoration:none;display:flex;align-items:center;justify-content:center;right:18px;top:18px;width:44px;height:44px;border-radius:15px;background:#fff;color:#475569;border:1px solid var(--line);box-shadow:none;font-size:22px}.modal-top{padding-right:60px;margin-bottom:18px}.modal-tag{display:inline-flex;padding:8px 12px;border-radius:999px;background:#f8fbff;border:1px solid var(--line);font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.05em;color:#45617e;margin-bottom:12px}.modal-title{font-size:30px;font-weight:950;letter-spacing:-.04em;margin:0 0 7px}.field{margin-top:16px}label{display:block;font-weight:900;font-size:15px;margin-bottom:8px}input[type=\"text\"],input[type=\"email\"],input[type=\"number\"],textarea{width:100%;border:1px solid var(--line2);background:#fff;color:var(--text);border-radius:16px;padding:14px 16px;font-size:16px;outline:none;transition:.15s ease}input:focus,textarea:focus{border-color:#60a5fa;box-shadow:0 0 0 4px rgba(96,165,250,.18)}textarea{min-height:220px;resize:vertical;line-height:1.55}.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.help{color:var(--muted);font-size:13px;line-height:1.5;margin-top:8px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.confirm{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-weight:800;color:#334155}.confirm input{margin-top:3px}.dropzone{margin-top:10px;border:2px dashed #bfcee2;background:#f8fbff;border-radius:18px;padding:18px;text-align:center;transition:.15s ease;outline:none}.dropzone:hover,.dropzone:focus,.dropzone.dragover{border-color:#60a5fa;background:#eff6ff}.drop-main{font-weight:950;font-size:15px;margin-bottom:4px}.drop-sub{color:var(--muted);font-size:13px;line-height:1.45}.drop-list{margin-top:10px;text-align:left;color:#334155;font-size:13px}.file-item{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:12px;background:#fff;margin-top:8px}.file-remove{background:transparent;border:0;color:var(--red);font-weight:950;cursor:pointer;box-shadow:none;padding:0}.hide{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important;overflow:hidden!important}.search-box{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:end}.contacts-wrap{margin-top:12px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.signature-preview{margin-top:14px;border:1px solid var(--line);background:#f8fbff;border-radius:18px;padding:14px;max-height:260px;overflow:auto}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:${assinaturaExiste ? '#16a34a' : '#dc2626'};margin-right:8px}.signature-alert{margin-top:14px;padding:12px 14px;border-radius:16px;background:#eff6ff;color:#1d4ed8;font-weight:900}.alert{position:fixed;inset:0;background:rgba(20,33,53,.42);display:none;align-items:center;justify-content:center;z-index:99;padding:20px}.alert.open{display:flex}.alert-card{width:min(620px,100%);background:#fff;border:1px solid var(--line);border-radius:28px;padding:30px;box-shadow:0 30px 90px rgba(18,34,64,.28)}.alert-icon{width:62px;height:62px;border-radius:22px;display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:18px}.alert-icon.ok{background:#ecfdf3;color:#16a34a}.alert-icon.erro{background:#fef2f2;color:#dc2626}.alert-card h2{font-size:30px}.alert-card p{font-size:17px;line-height:1.55;color:#5f6f86;margin-top:8px}@media(max-width:1040px){.hero-grid,.row{grid-template-columns:1fr}.main-actions{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:720px){.wrap{padding:14px}.main-actions,.search-box{grid-template-columns:1fr}.brand{align-items:flex-start}.brand-icon{width:58px;height:58px}.hero{padding:20px;border-radius:24px}h1{font-size:30px}.modal-box{border-radius:24px;padding:20px}button{width:100%}}\n\n/* BOTÕES QUE ABREM MODAIS POR LINK - SEM DEPENDER DE JAVASCRIPT */\na.btn-link,\na.btn-link:link,\na.btn-link:visited{\n  display:inline-flex;\n  align-items:center;\n  justify-content:center;\n  gap:8px;\n  min-height:46px;\n  padding:13px 17px;\n  border-radius:16px;\n  border:0;\n  font-size:15px;\n  font-weight:900;\n  line-height:1;\n  text-align:center;\n  text-decoration:none;\n  cursor:pointer;\n  box-shadow:0 12px 24px rgba(18,34,64,.13);\n  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;\n}\na.btn-link:hover{\n  text-decoration:none;\n  transform:translateY(-1px);\n  filter:brightness(1.02);\n  box-shadow:0 16px 30px rgba(18,34,64,.16);\n}\na.btn-link:active{\n  transform:translateY(0);\n  box-shadow:0 8px 18px rgba(18,34,64,.13);\n}\na.btn-link.btn-blue{background:var(--blue);color:#fff}\na.btn-link.btn-purple{background:var(--purple);color:#fff}\na.btn-link.btn-green{background:var(--green);color:#fff}\na.btn-link.btn-orange{background:var(--orange);color:#fff}\na.btn-link.secondary{\n  background:#fff;\n  color:#28415f;\n  border:1px solid var(--line);\n  box-shadow:none;\n}\n.action-card>a.btn-link{\n  width:100%;\n  margin-top:18px;\n}\n.action-card .actions{\n  display:grid;\n  grid-template-columns:repeat(3,minmax(0,1fr));\n  gap:8px;\n  margin-top:18px;\n}\n.action-card .actions a.btn-link{\n  width:100%;\n  padding:12px 10px;\n  font-size:13px;\n  min-height:42px;\n}\n.modal-close,\n.modal-close:link,\n.modal-close:visited{\n  position:absolute;\n  right:18px;\n  top:18px;\n  width:44px;\n  height:44px;\n  border-radius:15px;\n  background:#fff;\n  color:#475569;\n  border:1px solid var(--line);\n  box-shadow:none;\n  font-size:22px;\n  font-weight:900;\n  text-decoration:none;\n  display:flex;\n  align-items:center;\n  justify-content:center;\n}\nselect{\n  width:100%;\n  border:1px solid var(--line2);\n  background:#fff;\n  color:var(--text);\n  border-radius:16px;\n  padding:14px 16px;\n  font-size:16px;\n  outline:none;\n}\nselect:focus{\n  border-color:#60a5fa;\n  box-shadow:0 0 0 4px rgba(96,165,250,.18);\n}\n@media(max-width:720px){\n  a.btn-link{width:100%}\n  .action-card .actions{grid-template-columns:1fr}\n}\n\n\n/* CORREÇÃO VISUAL DOS LINKS QUE ABREM MODAIS */\na.btn-link,\na.btn-link:link,\na.btn-link:visited{\n  display:inline-flex!important;\n  align-items:center!important;\n  justify-content:center!important;\n  gap:8px!important;\n  min-height:46px!important;\n  padding:13px 17px!important;\n  border-radius:16px!important;\n  border:0!important;\n  font-size:15px!important;\n  font-weight:900!important;\n  line-height:1!important;\n  text-align:center!important;\n  text-decoration:none!important;\n  cursor:pointer!important;\n  box-shadow:0 12px 24px rgba(18,34,64,.13)!important;\n  transition:transform .12s ease,box-shadow .12s ease,filter .12s ease!important;\n}\na.btn-link:hover{text-decoration:none!important;transform:translateY(-1px)!important;filter:brightness(1.02)!important;box-shadow:0 16px 30px rgba(18,34,64,.16)!important}\na.btn-link:active{transform:translateY(0)!important;box-shadow:0 8px 18px rgba(18,34,64,.13)!important}\na.btn-link.btn-blue{background:#2563eb!important;color:#fff!important}\na.btn-link.btn-purple{background:#7c3aed!important;color:#fff!important}\na.btn-link.btn-green{background:#16a34a!important;color:#fff!important}\na.btn-link.btn-orange{background:#f97316!important;color:#fff!important}\na.btn-link.secondary{background:#fff!important;color:#28415f!important;border:1px solid var(--line)!important;box-shadow:none!important}\n.action-card>a.btn-link{width:100%!important;margin-top:18px!important}\n.action-card .actions{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px!important;margin-top:18px!important}\n.action-card .actions a.btn-link{width:100%!important;padding:12px 10px!important;font-size:13px!important;min-height:42px!important}\n\n\n.file-label{\n  display:inline-flex!important;\n  align-items:center!important;\n  justify-content:center!important;\n  min-height:42px!important;\n  padding:12px 16px!important;\n  border-radius:16px!important;\n  font-size:14px!important;\n  font-weight:900!important;\n  cursor:pointer!important;\n  text-decoration:none!important;\n}\n.file-label.secondary{\n  background:#fff!important;\n  color:#28415f!important;\n  border:1px solid var(--line)!important;\n  box-shadow:none!important;\n}\n.file-label:hover{background:#f8fbff!important}\n\n\n.btn-red{background:#dc2626}\n.group-grid{display:grid;grid-template-columns:1fr;gap:12px}\n.group-card{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;background:#f8fbff;border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-top:8px}\n.group-card b{display:block;color:#162033}\n.group-card small{display:block;color:var(--muted);margin-top:3px}\n.envio-filtros{grid-template-columns:minmax(260px,.75fr) minmax(520px,1.75fr)}\n#modal_enviar .search-box{grid-template-columns:minmax(340px,1fr) auto auto}\n@media(max-width:900px){.envio-filtros,#modal_enviar .search-box{grid-template-columns:1fr}.main-actions{grid-template-columns:repeat(2,1fr)!important}}\n\n\n.group-card-btn{width:100%;border:1px solid var(--line);text-align:left;box-shadow:none;color:inherit;cursor:pointer}\n.group-card-btn:hover{border-color:#93c5fd;background:#eff6ff}\n.group-card-btn.ativo{border-color:#2563eb;background:#eff6ff}\n.smart-group-panel{border:1px solid var(--line);background:#f8fbff;border-radius:20px;padding:16px;margin:14px 0}\n.smart-group-tools{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(260px,1fr) auto;gap:12px;align-items:end}\n.linha-grupo-selecionada{background:#eff6ff!important}\n.linha-grupo-selecionada td{border-bottom-color:#bfdbfe}\n#modal_grupo .contacts-wrap{max-height:430px}\n@media(max-width:900px){.smart-group-tools{grid-template-columns:1fr}}\n\n\n.smart-box{border:1px solid var(--line);background:#f8fbff;border-radius:18px;padding:14px;margin-top:14px}\n.smart-title{font-weight:950;color:#162033;margin-bottom:6px}\n.smart-kpis{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}\n.smart-kpi{padding:8px 10px;border:1px solid var(--line);background:#fff;border-radius:999px;font-size:12px;font-weight:900;color:#334155}\n.smart-preview{border:1px solid var(--line);background:#fff;border-radius:16px;padding:14px;max-height:260px;overflow:auto;margin-top:10px;line-height:1.5}\n.smart-ok{color:#16a34a;font-weight:950}\n.smart-warn{color:#f97316;font-weight:950}\n.smart-erro{color:#dc2626;font-weight:950}\ntr.smart-auto-selected{background:#ecfdf3!important}\ntr.smart-auto-selected td{border-bottom-color:#bbf7d0}\n\n\n/* V29 - organização visual mais limpa */\n.modal-box{scrollbar-gutter:stable;}\n.modal-top{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:18px}\n.smart-box{box-shadow:0 10px 24px rgba(18,34,64,.04)}\n.smart-preview{font-size:14px;color:#334155}\n.contacts-wrap table tr:hover td{background:#f8fbff}\n.group-card-btn{transition:.15s ease}\n.group-card-btn.ativo{box-shadow:0 0 0 3px rgba(37,99,235,.12)}\nbutton:disabled{opacity:.65;cursor:not-allowed;filter:grayscale(.2)}\n#modal_grupo .smart-group-panel{position:sticky;top:0;z-index:5;background:#f8fbff}\n#modal_enviar .envio-filtros{align-items:start}\n\n</style></head><body><div class=\"wrap\"><section class=\"hero\"><div class=\"hero-grid\"><div class=\"brand\"><div class=\"brand-icon\">✉️</div><div><h1>Mala Direta Vesper</h1><div class=\"hero-sub\">Envie mensagens de forma simples. Escreva uma mensagem global, faça um teste e escolha quem vai receber.</div><div class=\"chips\"><div class=\"chip\">Mensagem global</div><div class=\"chip\">Teste antes do envio</div><div class=\"chip\">Anexos por Ctrl + V</div></div></div></div><div class=\"stats\"><div class=\"stat\"><small>Contatos disponíveis</small><b>${totalClientes}</b></div><div class=\"stat\"><small>Fila pendente</small><b>${totalFilaContatos}</b></div><div class=\"stat\"><small>Último envio</small><b style=\"font-size:18px\">${escapeHtml(ultimaAcao)}</b></div><div class=\"stat\"><small>Sucesso / erro</small><b>${totalSucesso} / ${totalErro}</b></div></div></div></section><section class=\"main-actions\"><div class=\"card action-card\"><div><div class=\"icon blue\">💬</div><h3>Mensagem</h3><p class=\"muted\">Editar assunto e texto do e-mail.</p></div><a class=\"btn-link btn-blue\" href=\"#modal_mensagem\">Editar mensagem</a></div><div class=\"card action-card\"><div><div class=\"icon purple\">🧪</div><h3>Teste</h3><p class=\"muted\">Enviar para um e-mail interno antes de usar.</p></div><a class=\"btn-link btn-purple\" href=\"#modal_teste\">Fazer teste</a></div><div class=\"card action-card\"><div><div class=\"icon green\">📨</div><h3>Enviar</h3><p class=\"muted\">Buscar contatos, marcar e enviar.</p></div><a class=\"btn-link btn-green\" href=\"#modal_enviar\">Enviar mensagem</a></div><div class=\"card action-card\"><div><div class=\"icon orange\">👥</div><h3>Contatos</h3><p class=\"muted\">Adicionar contato, importar vários ou criar grupos em uma tela só.</p></div><a class=\"btn-link btn-orange\" href=\"#modal_contatos\">Gerenciar contatos</a></div><div class=\"card action-card\"><div><div class=\"icon blue\">⚙️</div><h3>Configuração</h3><p class=\"muted\">Ajustar envio parcelado, quantidade por lote e intervalo.</p></div><a class=\"btn-link secondary\" href=\"#modal_config\">Configurar</a></div></section><section class=\"card\"><div style=\"display:flex;justify-content:space-between;gap:14px;align-items:center;margin-bottom:14px\"><div><h2>Últimos envios</h2><p class=\"muted\">Resumo dos últimos envios realizados.</p></div><div class=\"chip\">Assinatura ${assinaturaExiste ? 'ativa' : 'simples'}</div></div><div class=\"table-wrap\"><table><thead><tr><th>Data e hora</th><th>Empresa</th><th>E-mail</th><th>Status</th></tr></thead><tbody>${logRows || '<tr><td colspan=\"4\">Nenhum envio registrado ainda.</td></tr>'}</tbody></table></div></section></div>\n<div class=\"modal\" id=\"modal_mensagem\"><div class=\"modal-box\"><a class=\"modal-close\" href=\"#\">&times;</a><div class=\"modal-top\"><div class=\"modal-tag\">Mensagem</div><h2 class=\"modal-title\">Editar mensagem padrão</h2><div class=\"muted\">Escreva como se fosse um e-mail normal. Aqui também ficam os anexos padrão da campanha.</div></div><form data-ajax=\"true\" data-action=\"salvar\" onsubmit=\"return bloquearSubmit(event,this)\"><div class=\"field\"><label>Assunto do e-mail</label><input type=\"text\" name=\"assunto\" value=\"${escapeHtml(config.assunto || 'Comunicado Vesper')}\" required></div><div class=\"field\"><label>Texto da mensagem</label><textarea name=\"mensagem_texto\" required>${escapeHtml(mensagemTexto)}</textarea><div class=\"help\">Exemplo: “Boa tarde, iremos participar de um evento...”</div></div><div class=\"field\"><label>Anexos padrão da mensagem</label><input class=\"hide\" id=\"anexo_mensagem\" type=\"file\" multiple><input type=\"hidden\" name=\"manter_anexos\" value=\"${totalAnexosPadrao ? 'sim' : 'nao'}\"><div class=\"dropzone\" id=\"zona_mensagem\" tabindex=\"0\"><div class=\"drop-main\">Passe o mouse aqui e cole com Ctrl + V</div><div class=\"drop-sub\">Esses anexos ficam salvos na mensagem e entram no teste/envio automaticamente. Para trocar, escolha ou cole novos arquivos.</div><div class=\"actions\" style=\"justify-content:center\"><label class=\"file-label secondary\" for=\"anexo_mensagem\">Escolher arquivo</label></div><div class=\"drop-list\" id=\"lista_mensagem\">${totalAnexosPadrao ? totalAnexosPadrao + ' anexo(s) padrão salvo(s). Se você colar/escolher novos, eles substituem os atuais.' : 'Nenhum anexo padrão salvo.'}</div></div></div><div class=\"signature-alert\"><span class=\"dot\"></span>A assinatura abaixo será colocada automaticamente no final. Campanha atual: ${campanhaAtualId} · já enviados: ${totalJaEnviadosCampanha}</div><div class=\"signature-preview\">${assinaturaPreview}</div><div class=\"actions\"><button class=\"btn-blue\" type=\"submit\">Salvar mensagem</button></div></form></div></div>\n<div class=\"modal\" id=\"modal_teste\"><div class=\"modal-box\"><a class=\"modal-close\" href=\"#\">&times;</a><div class=\"modal-top\"><div class=\"modal-tag\">Teste</div><h2 class=\"modal-title\">Enviar um teste</h2><div class=\"muted\">Use para conferir a mensagem, assinatura e anexos antes do envio real.</div></div><form data-ajax=\"true\" data-action=\"teste_unico\" onsubmit=\"return bloquearSubmit(event,this)\"><div class=\"row\"><div class=\"field\"><label>Nome do teste</label><input type=\"text\" name=\"nome_teste\" value=\"Teste\" required></div><div class=\"field\"><label>E-mail para receber o teste</label><input type=\"email\" name=\"email_teste\" placeholder=\"exemplo@example.com\" required></div></div><div class=\"field\"><label>Anexos</label><input class=\"hide\" id=\"anexo_teste\" type=\"file\" multiple><div class=\"dropzone\" id=\"zona_teste\" tabindex=\"0\"><div class=\"drop-main\">Passe o mouse aqui e cole com Ctrl + V</div><div class=\"drop-sub\">Também dá para arrastar arquivos. Para escolher pelo Windows, use o botão abaixo.</div><div class=\"actions\" style=\"justify-content:center\"><label class=\"file-label secondary\" for=\"anexo_teste\">Escolher arquivo</label></div><div class=\"drop-list\" id=\"lista_teste\"></div></div></div><div class=\"actions\"><button class=\"btn-purple\" type=\"submit\">Enviar teste agora</button></div></form></div></div>\n<div class=\"modal\" id=\"modal_enviar\"><div class=\"modal-box\"><a class=\"modal-close\" href=\"#\">&times;</a><div class=\"modal-top\"><div class=\"modal-tag\">Enviar</div><h2 class=\"modal-title\">Escolher quem vai receber</h2><div class=\"muted\">Escolha um grupo, busque contatos, marque todos visíveis ou selecione apenas alguns. O envio é individual para cada e-mail.</div></div><form data-ajax=\"true\" data-action=\"enviar_destinatarios\" onsubmit=\"return bloquearSubmit(event,this)\"><div class=\"row envio-filtros\"><div class=\"field\"><label>Grupo</label><select id=\"filtro_grupo\" style=\"width:100%;border:1px solid var(--line2);background:#fff;color:var(--text);border-radius:16px;padding:14px 16px;font-size:16px\"><option value=\"\">Todos / Geral</option>${gruposOptions}</select><div class=\"help\">Escolha um grupo para filtrar a lista antes de marcar.</div></div><div class=\"field\"><label>Buscar contato</label><div class=\"search-box\"><input id=\"busca_clientes\" type=\"text\" placeholder=\"Digite nome da empresa ou e-mail\"><button class=\"secondary\" type=\"button\" id=\"marcar_visiveis\">Marcar todos visíveis</button><button class=\"secondary\" type=\"button\" id=\"desmarcar_visiveis\">Desmarcar todos</button></div></div></div><div class=\"contacts-wrap\"><table><thead><tr><th style=\"width:44px\"></th><th style=\"width:60px\">#</th><th>Empresa</th><th>E-mail</th><th>Grupo</th></tr></thead><tbody>${clienteRows || '<tr><td colspan=\"5\">Nenhum contato válido encontrado.</td></tr>'}</tbody></table></div><div class=\"field\"><label>Anexos</label><input class=\"hide\" id=\"anexo_envio\" type=\"file\" multiple><div class=\"dropzone\" id=\"zona_envio\" tabindex=\"0\"><div class=\"drop-main\">Passe o mouse aqui e cole com Ctrl + V</div><div class=\"drop-sub\">Também dá para arrastar arquivos. Para escolher pelo Windows, use o botão abaixo.</div><div class=\"actions\" style=\"justify-content:center\"><label class=\"file-label secondary\" for=\"anexo_envio\">Escolher arquivo</label></div><div class=\"drop-list\" id=\"lista_envio\"></div></div></div><label class=\"confirm\"><input type=\"checkbox\" name=\"evitar_reenvio\" value=\"sim\" checked>Não reenviar para contatos que já receberam esta mesma campanha.</label><label class=\"confirm\"><input type=\"checkbox\" name=\"confirmar\" value=\"sim\" required>Confirmo que revisei a mensagem e quero enviar para os contatos marcados.</label><div class=\"signature-alert\"><span class=\"dot\"></span>Proteção ativa: a campanha atual já tem ${totalJaEnviadosCampanha} e-mail(s) registrados como enviados.</div><div class=\"actions\"><button class=\"btn-green\" type=\"submit\">Enviar mensagem</button></div></form></div></div>\n\n<div class=\"modal\" id=\"modal_contatos\"><div class=\"modal-box\"><a class=\"modal-close\" href=\"#\">&times;</a><div class=\"modal-top\"><div class=\"modal-tag\">Contatos</div><h2 class=\"modal-title\">Gerenciar contatos</h2><div class=\"muted\">Escolha o que deseja fazer. Tudo fica separado para não confundir quem for usar.</div></div>\n  <div class=\"main-actions\" style=\"grid-template-columns:repeat(3,1fr);margin-bottom:0\">\n    <div class=\"card action-card\" style=\"min-height:190px;box-shadow:none\"><div><div class=\"icon orange\">➕</div><h3>Adicionar um contato</h3><p class=\"muted\">Cadastrar uma empresa/e-mail manualmente.</p></div><a class=\"btn-link btn-orange\" href=\"#modal_add\">Abrir adicionar</a></div>\n    <div class=\"card action-card\" style=\"min-height:190px;box-shadow:none\"><div><div class=\"icon blue\">📥</div><h3>Importar vários</h3><p class=\"muted\">Colar lista do Excel, CSV, TXT ou VCF.</p></div><a class=\"btn-link btn-blue\" href=\"#modal_importar\">Abrir importação</a></div>\n    <div class=\"card action-card\" style=\"min-height:190px;box-shadow:none\"><div><div class=\"icon green\">🗂️</div><h3>Criar grupos</h3><p class=\"muted\">Separar contatos por lista/campanha.</p></div><a class=\"btn-link btn-green\" href=\"#modal_grupo\">Abrir grupos</a></div>\n  </div>\n</div></div>\n\n<div class=\"modal\" id=\"modal_add\"><div class=\"modal-box\"><a class=\"modal-close\" href=\"#\">&times;</a><div class=\"modal-top\"><div class=\"modal-tag\">Novo contato</div><h2 class=\"modal-title\">Adicionar contato</h2><div class=\"muted\">Esse contato passa a aparecer na mala direta.</div><div class=\"actions\" style=\"margin-top:12px\"><a class=\"btn-link secondary\" href=\"#modal_contatos\">Voltar aos contatos</a><a class=\"btn-link btn-blue\" href=\"#modal_importar\">Importar vários</a><a class=\"btn-link btn-green\" href=\"#modal_grupo\">Grupos</a></div></div><form data-ajax=\"true\" data-action=\"adicionar_contato\" onsubmit=\"return bloquearSubmit(event,this)\"><div class=\"row\"><div class=\"field\"><label>Nome da empresa</label><input type=\"text\" name=\"novo_nome\" placeholder=\"Exemplo: Nova Empresa Ltda\" required></div><div class=\"field\"><label>E-mail</label><input type=\"email\" name=\"novo_email\" placeholder=\"contato@empresa.com\" required></div></div><div class=\"actions\"><button class=\"btn-orange\" type=\"submit\">Salvar contato</button></div></form></div></div>\n\n<div class=\"modal\" id=\"modal_importar\"><div class=\"modal-box\"><a class=\"modal-close\" href=\"#\">&times;</a><div class=\"modal-top\"><div class=\"modal-tag\">Importar contatos</div><h2 class=\"modal-title\">Adicionar vários contatos</h2><div class=\"muted\">Cole linhas de uma planilha, textos de cartões de visita ou carregue CSV/TXT/VCF. Aqui você apenas salva e organiza os contatos. O envio fica no botão Enviar.</div><div class=\"actions\" style=\"margin-top:12px\"><a class=\"btn-link secondary\" href=\"#modal_contatos\">Voltar aos contatos</a><a class=\"btn-link btn-orange\" href=\"#modal_add\">Adicionar um</a><a class=\"btn-link btn-green\" href=\"#modal_grupo\">Grupos</a></div></div>\n  <div class=\"row\"><div class=\"field\"><label>Salvar em qual grupo?</label><select id=\"import_grupo_existente\" style=\"width:100%;border:1px solid var(--line2);background:#fff;color:var(--text);border-radius:16px;padding:14px 16px;font-size:16px\"><option value=\"\">Geral / sem grupo</option>${gruposOptions}</select></div><div class=\"field\"><label>Ou criar novo grupo</label><input type=\"text\" id=\"import_grupo\" placeholder=\"Exemplo: fornecedores evento junho\"></div></div>\n  <div class=\"field\"><label>Cole aqui os contatos</label><textarea id=\"import_texto\" style=\"min-height:190px\" placeholder=\"Exemplos aceitos:&#10;Empresa ABC     compras@empresa.com&#10;João Silva <joao@empresa.com>&#10;projeto3@example.com&#10;&#10;Também pode copiar várias linhas do Excel e colar aqui.\"></textarea><div class=\"help\">Se só tiver o e-mail, o nome será a parte antes do @. Exemplo: projeto3@example.com vira nome “projeto3”.</div></div>\n  <div class=\"field\"><label>Ou carregar arquivo simples</label><input class=\"hide\" id=\"arquivo_importar\" type=\"file\" accept=\".csv,.txt,.vcf\" multiple><div class=\"dropzone\" id=\"zona_importar\" tabindex=\"0\"><div class=\"drop-main\">Arraste CSV, TXT ou VCF aqui, ou clique no botão abaixo</div><div class=\"drop-sub\">Para Excel, copie as linhas da planilha e cole no campo acima, ou salve como CSV.</div><div class=\"actions\" style=\"justify-content:center\"><label class=\"file-label secondary\" for=\"arquivo_importar\">Escolher arquivo</label></div><div class=\"drop-list\" id=\"lista_importar\">Nenhum arquivo selecionado.</div></div></div>\n  <div class=\"actions\"><button class=\"btn-blue\" type=\"button\" id=\"btn_prever_importacao\">Ver contatos encontrados</button></div>\n  <div id=\"preview_importacao\" style=\"display:none;margin-top:18px\"><h3>Contatos encontrados</h3><p class=\"muted\" id=\"resumo_importacao\"></p><div class=\"contacts-wrap\"><table><thead><tr><th>#</th><th>Nome/empresa</th><th>E-mail</th><th>Status</th></tr></thead><tbody id=\"tbody_importacao\"></tbody></table></div><div class=\"actions\"><button class=\"btn-blue\" type=\"button\" id=\"btn_salvar_importados\">Salvar contatos</button><a class=\"btn-link secondary\" href=\"#modal_enviar\">Ir para Enviar</a></div></div>\n</div></div>\n<div class=\"modal\" id=\"modal_grupo\"><div class=\"modal-box\"><a class=\"modal-close\" href=\"#\">&times;</a><div class=\"modal-top\"><div class=\"modal-tag\">Grupos</div><h2 class=\"modal-title\">Gerenciar grupos inteligente</h2><div class=\"muted\">Escolha um grupo e o painel já mostra os contatos dele no topo e marcados. Edite o nome, acrescente, remova contatos ou exclua o grupo na mesma tela.</div><div class=\"actions\" style=\"margin-top:12px\"><a class=\"btn-link secondary\" href=\"#modal_contatos\">Voltar aos contatos</a><a class=\"btn-link btn-orange\" href=\"#modal_add\">Adicionar um</a><a class=\"btn-link btn-blue\" href=\"#modal_importar\">Importar vários</a></div></div>\n\n  <div class=\"field\"><label>Grupos salvos</label><div class=\"group-grid\" id=\"cards_grupos\">${gruposCards}</div></div>\n\n  <form data-ajax=\"true\" data-action=\"salvar_grupo_inteligente\" onsubmit=\"return bloquearSubmit(event,this)\">\n    <div class=\"smart-group-panel\">\n      <div class=\"smart-group-tools\">\n        <div class=\"field\" style=\"margin-top:0\"><label>Grupo ativo</label><select id=\"grupo_ativo_inteligente\" name=\"grupo_antigo\" style=\"width:100%;border:1px solid var(--line2);background:#fff;color:var(--text);border-radius:16px;padding:14px 16px;font-size:16px\"><option value=\"\">Novo grupo</option>${gruposOptions}</select><div class=\"help\">Ao escolher um grupo, os contatos dele aparecem primeiro e já marcados.</div></div>\n        <div class=\"field\" style=\"margin-top:0\"><label>Nome do grupo</label><input type=\"text\" id=\"grupo_nome_inteligente\" name=\"grupo_nome\" placeholder=\"Exemplo: fornecedores evento junho\"><div class=\"help\">Para renomear, escolha o grupo e altere o nome aqui.</div></div>\n        <div class=\"actions\" style=\"margin-top:0\"><button class=\"btn-blue\" type=\"submit\">Salvar alterações</button><button class=\"secondary\" type=\"button\" id=\"limpar_grupo_inteligente\">Limpar</button></div>\n      </div>\n      <div class=\"signature-alert\" id=\"status_grupo_inteligente\" style=\"margin-top:14px\"><span class=\"dot\"></span>Escolha um grupo existente ou crie um novo.</div>\n    </div>\n\n    <div class=\"field\"><label>Buscar contatos</label><div class=\"search-box\"><input id=\"busca_grupo\" type=\"text\" placeholder=\"Digite nome da empresa ou e-mail\"><button class=\"secondary\" type=\"button\" id=\"marcar_grupo_visiveis\">Marcar visíveis</button><button class=\"secondary\" type=\"button\" id=\"desmarcar_grupo_visiveis\">Desmarcar todos</button></div><div class=\"help\">Marcados = ficam dentro do grupo. Desmarcados = saem do grupo quando salvar alterações.</div></div>\n\n    <div class=\"contacts-wrap\"><table><thead><tr><th style=\"width:44px\"></th><th>#</th><th>Empresa</th><th>E-mail</th><th>Grupo atual</th></tr></thead><tbody id=\"tbody_grupo_inteligente\">${clienteRows || '<tr><td colspan=\"5\">Nenhum contato válido encontrado.</td></tr>'}</tbody></table></div>\n\n    <div class=\"actions\"><button class=\"btn-blue\" type=\"submit\">Salvar alterações do grupo</button><button class=\"btn-red\" type=\"button\" id=\"excluir_grupo_inteligente\">Excluir grupo</button></div>\n  </form>\n</div></div>\n\n<div class=\"modal\" id=\"modal_config\"><div class=\"modal-box\"><a class=\"modal-close\" href=\"#\">&times;</a><div class=\"modal-top\"><div class=\"modal-tag\">Configuração</div><h2 class=\"modal-title\">Envio parcelado e proteção anti-reenvio</h2><div class=\"muted\">Configure tudo pelo painel: quantidade por lote, intervalo em minutos ou horas e proteção para não repetir contato na mesma campanha.</div></div>\n  <form data-ajax=\"true\" data-action=\"salvar_configuracao\" onsubmit=\"return bloquearSubmit(event,this)\">\n    <label class=\"confirm\"><input type=\"checkbox\" name=\"parcelado_ativo\" value=\"sim\" ${envioConfig.parcelado_ativo !== false ? 'checked' : ''}>Ativar envio parcelado</label>\n    <div class=\"row\">\n      <div class=\"field\"><label>Quantidade por lote</label><input type=\"number\" name=\"lote_quantidade\" min=\"0\" max=\"500\" value=\"${escapeHtml(envioConfig.lote_quantidade ?? 50)}\" required><div class=\"help\">Use 0 para enviar tudo de uma vez. Para reduzir risco de spam, comece com 10 a 50.</div></div>\n      <div class=\"field\"><label>Intervalo entre lotes</label><div style=\"display:grid;grid-template-columns:1fr 160px;gap:10px\"><input type=\"number\" name=\"intervalo_valor\" min=\"1\" max=\"10080\" step=\"1\" value=\"${escapeHtml(envioConfig.intervalo_valor || 12)}\" required><select name=\"intervalo_unidade\" style=\"width:100%;border:1px solid var(--line2);background:#fff;color:var(--text);border-radius:16px;padding:14px 16px;font-size:16px\"><option value=\"minutos\" ${envioConfig.intervalo_unidade === 'minutos' ? 'selected' : ''}>minutos</option><option value=\"horas\" ${envioConfig.intervalo_unidade !== 'minutos' ? 'selected' : ''}>horas</option></select></div><div class=\"help\">Exemplo: 5 minutos, 30 minutos, 12 horas ou 48 horas.</div></div>\n    </div>\n    <label class=\"confirm\"><input type=\"checkbox\" name=\"protecao_global\" value=\"sim\" ${envioConfig.protecao_global !== false ? 'checked' : ''}>Evitar reenviar para quem já recebeu a mesma campanha.</label>\n    <div class=\"signature-alert\"><span class=\"dot\"></span>Fila atual: ${totalFilaContatos} contatos pendentes. Próximo lote: ${escapeHtml(proximoLote)}. Campanha atual: ${campanhaAtualId} · já enviados: ${totalJaEnviadosCampanha}</div>\n    <div class=\"actions\"><button class=\"btn-blue\" type=\"submit\">Salvar configuração</button></div>\n  </form>\n</div></div>\n\n<div class=\"alert\" id=\"alerta\"><div class=\"alert-card\"><div class=\"alert-icon ok\" id=\"alertaIcon\">✅</div><h2 id=\"alertaTitulo\">Tudo certo</h2><p id=\"alertaTexto\">A ação foi enviada.</p><button class=\"btn-blue\" type=\"button\" onclick=\"fecharAviso()\">Voltar para a Mala Direta</button></div></div>\n<script>\nconst arquivosPorInput = new Map();\nfunction mostrarAviso(titulo,texto,tipo='ok'){const a=document.getElementById('alerta');const i=document.getElementById('alertaIcon');document.getElementById('alertaTitulo').textContent=titulo;document.getElementById('alertaTexto').textContent=texto;i.textContent=tipo==='erro'?'⚠️':'✅';i.className='alert-icon '+(tipo==='erro'?'erro':'ok');a.classList.add('open')}function fecharAviso(){document.getElementById('alerta').classList.remove('open')}\nfunction openModal(id){const el=document.getElementById(id);if(el)el.classList.add('open')}function closeModal(el){if(el)el.classList.remove('open')}document.querySelectorAll('[data-open]').forEach(btn=>btn.addEventListener('click',()=>openModal(btn.dataset.open)));document.querySelectorAll('[data-close]').forEach(btn=>btn.addEventListener('click',()=>closeModal(btn.closest('.modal'))));document.querySelectorAll('.modal').forEach(modal=>modal.addEventListener('click',e=>{if(e.target===modal)closeModal(modal)}));document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal.open').forEach(closeModal)});\nfunction setupFilter(){\n const search=document.getElementById('busca_clientes');\n const group=document.getElementById('filtro_grupo');\n const rows=Array.from(document.querySelectorAll('#modal_enviar .linha-cliente'));\n const mark=document.getElementById('marcar_visiveis');\n const unmark=document.getElementById('desmarcar_visiveis');\n if(!search)return;\n function apply(){\n   const term=(search.value||'').toLowerCase().trim();\n   const g=(group?.value||'').toLowerCase().trim();\n   rows.forEach(row=>{\n     const matchText=!term||row.dataset.search.includes(term);\n     const matchGroup=!g||row.dataset.groups.includes(g);\n     const visible=matchText&&matchGroup;\n     row.style.display=visible?'':'none';\n   });\n }\n search.addEventListener('input',apply);\n group?.addEventListener('change',()=>{apply();rows.forEach(row=>{const c=row.querySelector('input[type=\"checkbox\"]');if(c)c.checked=false})});\n mark?.addEventListener('click',()=>rows.forEach(row=>{if(row.style.display!=='none'){const c=row.querySelector('input[type=\"checkbox\"]');if(c)c.checked=true}}));\n unmark?.addEventListener('click',()=>rows.forEach(row=>{const c=row.querySelector('input[type=\"checkbox\"]');if(c)c.checked=false}));\n apply();\n}\nconst gruposPainel = ${JSON.stringify(grupos || {})};\n\nfunction setupFiltroGrupoExistente(){\n const search=document.getElementById('busca_grupo');\n const rows=Array.from(document.querySelectorAll('#modal_grupo .linha-cliente'));\n const mark=document.getElementById('marcar_grupo_visiveis');\n const unmark=document.getElementById('desmarcar_grupo_visiveis');\n const select=document.getElementById('grupo_ativo_inteligente');\n const nome=document.getElementById('grupo_nome_inteligente');\n const status=document.getElementById('status_grupo_inteligente');\n const tbody=document.getElementById('tbody_grupo_inteligente');\n const limpar=document.getElementById('limpar_grupo_inteligente');\n const excluir=document.getElementById('excluir_grupo_inteligente');\n const cards=Array.from(document.querySelectorAll('[data-grupo-card]'));\n if(!search||!tbody)return;\n\n rows.forEach((row,i)=>{ if(!row.dataset.originalOrder) row.dataset.originalOrder=String(i); });\n\n function emailDaLinha(row){\n   return String(row.dataset.email || row.querySelector('input[type=\"checkbox\"]')?.value?.split('||')[0] || '').trim().toLowerCase();\n }\n\n function emailsDoGrupo(grupo){\n   return new Set((Array.isArray(gruposPainel[grupo]) ? gruposPainel[grupo] : []).map(e=>String(e||'').trim().toLowerCase()).filter(Boolean));\n }\n\n function ordenarGrupoPrimeiro(grupo){\n   const set=emailsDoGrupo(grupo);\n   const ordenadas=[...rows].sort((a,b)=>{\n     const aIn=set.has(emailDaLinha(a)) ? 0 : 1;\n     const bIn=set.has(emailDaLinha(b)) ? 0 : 1;\n     if(aIn!==bIn) return aIn-bIn;\n     return Number(a.dataset.originalOrder||0)-Number(b.dataset.originalOrder||0);\n   });\n   ordenadas.forEach((row,idx)=>{\n     tbody.appendChild(row);\n     const pos=row.children[1];\n     if(pos) pos.textContent=String(idx+1);\n   });\n }\n\n function aplicarFiltro(){\n   const term=(search.value||'').toLowerCase().trim();\n   rows.forEach(row=>{row.style.display=(!term||row.dataset.search.includes(term))?'':'none'});\n }\n\n function atualizarCards(grupo){\n   cards.forEach(card=>card.classList.toggle('ativo', String(card.dataset.grupoCard||'')===grupo));\n }\n\n function carregarGrupo(grupo){\n   grupo=String(grupo||'').trim();\n   if(select) select.value=grupo;\n   if(nome) nome.value=grupo;\n   atualizarCards(grupo);\n   const set=emailsDoGrupo(grupo);\n   rows.forEach(row=>{\n     const checkbox=row.querySelector('input[type=\"checkbox\"]');\n     const marcado=grupo ? set.has(emailDaLinha(row)) : false;\n     if(checkbox) checkbox.checked=marcado;\n     row.classList.toggle('linha-grupo-selecionada',marcado);\n   });\n   ordenarGrupoPrimeiro(grupo);\n   aplicarFiltro();\n   const total=grupo ? set.size : 0;\n   if(status){\n     if(grupo) status.innerHTML='<span class=\"dot\"></span>Grupo selecionado: <b>'+grupo+'</b> · '+total+' contatos já cadastrados. Marque/desmarque e clique em salvar alterações.';\n     else status.innerHTML='<span class=\"dot\"></span>Novo grupo: digite um nome, marque os contatos e salve.';\n   }\n }\n\n function atualizarMarcadosVisual(){\n   rows.forEach(row=>{\n     const checked=!!row.querySelector('input[type=\"checkbox\"]')?.checked;\n     row.classList.toggle('linha-grupo-selecionada',checked);\n   });\n   const qtd=rows.filter(row=>row.querySelector('input[type=\"checkbox\"]')?.checked).length;\n   const grupo=String(nome?.value||select?.value||'').trim();\n   if(status){\n     status.innerHTML='<span class=\"dot\"></span>'+(grupo ? 'Grupo <b>'+grupo+'</b>' : 'Novo grupo')+' · '+qtd+' contatos marcados para ficar nesse grupo.';\n   }\n }\n\n search.addEventListener('input',aplicarFiltro);\n\n select?.addEventListener('change',()=>carregarGrupo(select.value));\n\n cards.forEach(card=>card.addEventListener('click',()=>{\n   carregarGrupo(card.dataset.grupoCard || '');\n   document.getElementById('grupo_ativo_inteligente')?.scrollIntoView({behavior:'smooth',block:'center'});\n }));\n\n rows.forEach(row=>{\n   row.querySelector('input[type=\"checkbox\"]')?.addEventListener('change',atualizarMarcadosVisual);\n });\n\n mark?.addEventListener('click',()=>{\n   rows.forEach(row=>{if(row.style.display!=='none'){const c=row.querySelector('input[type=\"checkbox\"]');if(c)c.checked=true;}});\n   atualizarMarcadosVisual();\n });\n\n unmark?.addEventListener('click',()=>{\n   rows.forEach(row=>{const c=row.querySelector('input[type=\"checkbox\"]');if(c)c.checked=false;});\n   atualizarMarcadosVisual();\n });\n\n limpar?.addEventListener('click',()=>{\n   if(select) select.value='';\n   if(nome) nome.value='';\n   search.value='';\n   rows.forEach(row=>{const c=row.querySelector('input[type=\"checkbox\"]');if(c)c.checked=false;row.classList.remove('linha-grupo-selecionada');});\n   atualizarCards('');\n   ordenarGrupoPrimeiro('');\n   aplicarFiltro();\n   if(status)status.innerHTML='<span class=\"dot\"></span>Tela limpa. Digite um novo grupo ou escolha um existente.';\n });\n\n excluir?.addEventListener('click',async()=>{\n   const grupo=String(select?.value||nome?.value||'').trim();\n   if(!grupo){mostrarAviso('Escolha um grupo','Selecione um grupo salvo antes de excluir.','erro');return;}\n   if(!gruposPainel[grupo]){mostrarAviso('Grupo ainda não existe','Esse nome ainda não está salvo como grupo.','erro');return;}\n   if(!confirm('Excluir o grupo \"'+grupo+'\"? Os contatos continuam salvos.'))return;\n   try{\n     await enviarPayload({acao:'excluir_grupo',grupo_nome:grupo,confirmar_exclusao:'sim'});\n     mostrarAviso('Grupo excluído','O grupo foi excluído. Atualize o painel para ver a mudança.');\n   }catch(err){\n     mostrarAviso('Não foi possível excluir','Detalhe: '+(err.message||err),'erro');\n   }\n });\n\n carregarGrupo(select?.value || '');\n}\n\n\n\nlet zonaAtivaParaColar = null;\n\nfunction atualizarListaArquivos(input, list){\n  list.innerHTML='';\n  const files=Array.from(input.files||[]);\n  if(!files.length){\n    list.innerHTML='<div class=\"file-item\" style=\"opacity:.75\">Nenhum arquivo selecionado.</div>';\n    return;\n  }\n  files.forEach((file,index)=>{\n    const item=document.createElement('div');\n    item.className='file-item';\n    const left=document.createElement('div');\n    const size=file.size?' - '+Math.max(1,Math.round(file.size/1024))+' KB':'';\n    left.textContent=file.name+size;\n    const rm=document.createElement('button');\n    rm.type='button';\n    rm.className='file-remove';\n    rm.textContent='remover';\n    rm.addEventListener('click',()=>{\n      const next=new DataTransfer();\n      Array.from(input.files||[]).forEach((f,i)=>{if(i!==index)next.items.add(f)});\n      input.files=next.files;\n      atualizarListaArquivos(input,list);\n    });\n    item.appendChild(left);\n    item.appendChild(rm);\n    list.appendChild(item);\n  });\n}\n\nfunction adicionarArquivosNoInput(input, list, fileList){\n  if(!input||!list||!fileList||!fileList.length)return false;\n  const next=new DataTransfer();\n  const existentes=Array.from(input.files||[]);\n  const chaves=new Set(existentes.map(f=>f.name+'|'+f.size+'|'+f.lastModified));\n  existentes.forEach(f=>next.items.add(f));\n  Array.from(fileList).forEach(file=>{\n    const chave=file.name+'|'+file.size+'|'+file.lastModified;\n    if(!chaves.has(chave)){\n      next.items.add(file);\n      chaves.add(chave);\n    }\n  });\n  input.files=next.files;\n  atualizarListaArquivos(input,list);\n  return true;\n}\n\nfunction zonaVisivelPadrao(){\n  const alvo = window.location.hash ? document.querySelector(window.location.hash + ' .dropzone') : null;\n  if(alvo) return alvo;\n  return Array.from(document.querySelectorAll('.modal:target .dropzone, .modal.open .dropzone')).find(Boolean) || null;\n}\n\nfunction setupDropzone(zoneId,inputId,listId){\n  const zone=document.getElementById(zoneId);\n  const input=document.getElementById(inputId);\n  const list=document.getElementById(listId);\n  if(!zone||!input||!list)return;\n\n  zone.dataset.inputId=inputId;\n  zone.dataset.listId=listId;\n\n  document.querySelectorAll('[data-input=\"'+inputId+'\"]').forEach(btn=>btn.addEventListener('click',()=>input.click()));\n\n  input.addEventListener('change',()=>atualizarListaArquivos(input,list));\n\n  zone.addEventListener('mouseenter',()=>{zonaAtivaParaColar=zone; try{zone.focus();}catch(e){} });\n  zone.addEventListener('mousemove',()=>{zonaAtivaParaColar=zone;});\n  zone.addEventListener('focus',()=>{zonaAtivaParaColar=zone;});\n  zone.addEventListener('click',()=>{zonaAtivaParaColar=zone; zone.focus();});\n  zone.addEventListener('dragover',e=>{e.preventDefault();zonaAtivaParaColar=zone;zone.classList.add('dragover')});\n  zone.addEventListener('dragleave',()=>zone.classList.remove('dragover'));\n  zone.addEventListener('drop',e=>{\n    e.preventDefault();\n    zone.classList.remove('dragover');\n    zonaAtivaParaColar=zone;\n    if(e.dataTransfer?.files?.length)adicionarArquivosNoInput(input,list,e.dataTransfer.files);\n  });\n  atualizarListaArquivos(input,list);\n}\n\nlet ultimaColagemArquivos = '';\ndocument.addEventListener('paste',e=>{\n  const items=Array.from(e.clipboardData?.items||[]);\n  const files=items.filter(item=>item.kind==='file').map(item=>item.getAsFile()).filter(Boolean);\n  if(!files.length)return;\n\n  const assinatura = files.map(f=>f.name+'|'+f.size+'|'+f.type).join(';');\n  const agora = Date.now();\n  if(window.__ultimaColagemAssinatura === assinatura && window.__ultimaColagemQuando && (agora - window.__ultimaColagemQuando) < 800){\n    e.preventDefault();\n    e.stopImmediatePropagation();\n    return;\n  }\n  window.__ultimaColagemAssinatura = assinatura;\n  window.__ultimaColagemQuando = agora;\n\n  const zone=zonaAtivaParaColar || zonaVisivelPadrao();\n  if(!zone)return;\n\n  const input=document.getElementById(zone.dataset.inputId);\n  const list=document.getElementById(zone.dataset.listId);\n  if(adicionarArquivosNoInput(input,list,files)){\n    e.preventDefault();\n    e.stopImmediatePropagation();\n  }\n});\n\nfunction fileToBase64(file){\n  return new Promise((resolve,reject)=>{\n    const reader=new FileReader();\n    reader.onload=()=>{\n      const result=String(reader.result||'');\n      resolve({fileName:file.name,mimeType:file.type||'application/octet-stream',size:file.size,data:result.split(',')[1]||''});\n    };\n    reader.onerror=reject;\n    reader.readAsDataURL(file);\n  });\n}\n\nasync function arquivosDoInput(id){\n  const files=Array.from(document.getElementById(id)?.files||[]);\n  const total=files.reduce((s,f)=>s+f.size,0);\n  if(total>12*1024*1024)throw new Error('Os anexos estão muito grandes. Use até 12 MB por envio.');\n  const saida=[];\n  for(const f of files)saida.push(await fileToBase64(f));\n  return saida;\n}\n\nasync function enviarPayload(payload){\n  const res=await fetch('${acaoUrl}',{\n    method:'POST',\n    headers:{'Content-Type':'application/json'},\n    body:JSON.stringify(payload)\n  });\n  if(!res.ok){\n    let body='';\n    try{body=await res.text()}catch{}\n    throw new Error('HTTP '+res.status+(body?' - '+body.slice(0,180):''));\n  }\n}\n\nfunction bloquearSubmit(e, form){\n  if(e) e.preventDefault();\n  enviarFormulario(form);\n  return false;\n}\nwindow.bloquearSubmit = bloquearSubmit;\n\nasync function enviarFormulario(form){\n  if(!form) return false;\n  if(form.dataset.enviando === '1') return false;\n  form.dataset.enviando = '1';\n\n  const botoes = Array.from(form.querySelectorAll('button[type=\"submit\"]'));\n  const textosOriginais = botoes.map(b => b.textContent);\n  botoes.forEach(b => { b.disabled = true; b.textContent = 'Enviando...'; });\n\n  try{\n    const action=form.dataset.action;\n    const fd=new FormData(form);\n    const payload={acao:action};\n\n    for(const [k,v] of fd.entries()){\n      if(k==='selecionados'){\n        if(!payload.selecionados)payload.selecionados=[];\n        payload.selecionados.push(v);\n      }else{\n        payload[k]=v;\n      }\n    }\n\n    if(action==='salvar')payload.anexos_base64=await arquivosDoInput('anexo_mensagem');\n    if(action==='teste_unico')payload.anexos_base64=await arquivosDoInput('anexo_teste');\n    if(action==='enviar_destinatarios')payload.anexos_base64=await arquivosDoInput('anexo_envio');\n\n    await enviarPayload(payload);\n\n    if(action==='salvar')mostrarAviso('Mensagem salva','Pronto. A mensagem foi salva.');\n    else if(action==='adicionar_contato')mostrarAviso('Contato salvo','Pronto. O contato foi enviado para salvar. Atualize o painel em alguns segundos para aparecer na lista.');\n    else if(action==='criar_grupo'||action==='salvar_grupo_inteligente')mostrarAviso('Grupo salvo','Pronto. O grupo foi atualizado. Atualize o painel em alguns segundos para ver a lista.');\n    else if(action==='renomear_grupo')mostrarAviso('Grupo renomeado','Pronto. O grupo foi renomeado. Atualize o painel para ver a mudança.');\n    else if(action==='excluir_grupo')mostrarAviso('Grupo excluído','Pronto. O grupo foi excluído. Os contatos continuam salvos.');\n    else if(action==='salvar_configuracao')mostrarAviso('Configuração salva','Pronto. A configuração de envio parcelado foi salva.');\n    else if(action==='teste_unico')mostrarAviso('Teste enviado','O teste foi enviado uma única vez. Confira a caixa de entrada.');\n    else mostrarAviso('Envio iniciado','A mensagem foi enviada para o n8n. Se houver parcelamento, os próximos lotes ficarão na fila.');\n  }catch(err){\n    mostrarAviso('Não foi possível enviar','Detalhe: '+(err.message||err),'erro');\n  }finally{\n    form.dataset.enviando = '0';\n    botoes.forEach((b,i) => { b.disabled = false; b.textContent = textosOriginais[i] || 'Enviar'; });\n  }\n  return false;\n}\nwindow.enviarFormulario = enviarFormulario;\n\n\nlet contatosImportadosAtuais = [];\nfunction nomePeloEmail(email){return String(email||'').split('@')[0].replace(/[._-]+/g,' ').trim()||String(email||'').split('@')[0]}\nfunction limparNomeContato(txt){return String(txt||'').replace(/[<>]/g,' ').replace(/\\\\b(e-?mail|email|contato|comercial|compras|financeiro|telefone|tel|cel|whatsapp|site|www)\\\\b\\\\s*:*/gi,' ').replace(/\\\\s+/g,' ').trim()}\nfunction extrairContatosDoTexto(texto){\n  const emailRe=/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\\\.[A-Z]{2,}/ig;\n  const linhas=String(texto||'').replace(/\\\\r/g,'\\\\n').split('\\\\n');\n  const encontrados=[];\n  const usados=new Set();\n  function add(nome,email){email=String(email||'').toLowerCase().trim();nome=limparNomeContato(nome)||nomePeloEmail(email);if(!email||!email.includes('@')||usados.has(email))return;usados.add(email);encontrados.push({empresa:nome,email})}\n  for(let i=0;i<linhas.length;i++){\n    const linha=linhas[i]||'';\n    const emails=[...linha.matchAll(emailRe)].map(m=>m[0]);\n    if(!emails.length)continue;\n    for(const email of emails){\n      let antes=linha.slice(0,linha.toLowerCase().indexOf(email.toLowerCase()));\n      let depois=linha.replace(email,' ');\n      let nome=limparNomeContato(antes);\n      if(!nome || nome.length<2){\n        const partes=linha.split(/\\\\t|;|,/).map(x=>x.trim()).filter(Boolean);\n        const semEmail=partes.filter(p=>!p.toLowerCase().includes(email.toLowerCase())&&!p.includes('@'));\n        nome=limparNomeContato(semEmail[0]||'');\n      }\n      if(!nome || nome.length<2){\n        for(let j=i-1;j>=Math.max(0,i-3);j--){\n          const cand=limparNomeContato(linhas[j]);\n          if(cand && !cand.includes('@') && cand.length>1 && cand.length<80 && !/^\\\\+?\\\\d|telefone|tel|cel|whatsapp|www|http/i.test(cand)){nome=cand;break}\n        }\n      }\n      add(nome,email);\n    }\n  }\n  const soltos=String(texto||'').match(emailRe)||[];\n  for(const email of soltos)add('',email);\n  return encontrados;\n}\nfunction renderPreviewImportacao(){\n  const tbody=document.getElementById('tbody_importacao');const resumo=document.getElementById('resumo_importacao');const box=document.getElementById('preview_importacao');\n  tbody.innerHTML='';\n  contatosImportadosAtuais.forEach((c,i)=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+(i+1)+'</td><td><input data-edit-empresa=\"'+i+'\" value=\"'+escapeHtmlClient(c.empresa)+'\" style=\"width:100%;border:1px solid #dbe5f2;border-radius:10px;padding:8px\"></td><td>'+escapeHtmlClient(c.email)+'</td><td>'+(c.status||'novo / verificar')+'</td>';tbody.appendChild(tr)});document.querySelectorAll('[data-edit-empresa]').forEach(inp=>inp.addEventListener('input',()=>{contatosImportadosAtuais[Number(inp.dataset.editEmpresa)].empresa=inp.value}));\n  resumo.textContent=contatosImportadosAtuais.length?('Foram encontrados '+contatosImportadosAtuais.length+' contatos válidos. Duplicados foram removidos.'):'Nenhum e-mail válido encontrado.';\n  box.style.display='block';\n}\nfunction escapeHtmlClient(v){return String(v||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\"','&quot;')}\nasync function lerArquivoTexto(file){return await file.text()}\nasync function adicionarArquivosImportacao(files){\n  let atual=document.getElementById('import_texto').value||'';\n  const nomes=[];\n  for(const file of Array.from(files||[])){\n    nomes.push(file.name);\n    if(/\\\\.(csv|txt|vcf)$/i.test(file.name)){\n      atual += '\\\\n\\\\n' + await lerArquivoTexto(file);\n    }else{\n      mostrarAviso('Arquivo não importado','Use CSV, TXT ou VCF. Para Excel, copie as linhas da planilha e cole no campo de texto, ou salve como CSV.','erro');\n    }\n  }\n  document.getElementById('import_texto').value=atual.trim();\n  document.getElementById('lista_importar').textContent=nomes.length?nomes.join(', '):'Nenhum arquivo selecionado.';\n}\nfunction setupImportacao(){\n  const area=document.getElementById('zona_importar');\n  const input=document.getElementById('arquivo_importar');\n  const btn=document.getElementById('btn_arquivo_importar');\n  if(!area)return;\n\n  btn?.addEventListener('click',()=>input.click());\n  input?.addEventListener('change',async()=>adicionarArquivosImportacao(input.files));\n\n  area.addEventListener('dragover',e=>{\n    e.preventDefault();\n    area.classList.add('dragover');\n  });\n\n  area.addEventListener('dragleave',()=>area.classList.remove('dragover'));\n\n  area.addEventListener('drop',async e=>{\n    e.preventDefault();\n    area.classList.remove('dragover');\n    await adicionarArquivosImportacao(e.dataTransfer.files);\n  });\n\n  document.getElementById('btn_prever_importacao')?.addEventListener('click',()=>{\n    contatosImportadosAtuais=extrairContatosDoTexto(document.getElementById('import_texto').value);\n    renderPreviewImportacao();\n  });\n\n  document.getElementById('btn_salvar_importados')?.addEventListener('click',async()=>{\n    try{\n      if(!contatosImportadosAtuais.length){\n        contatosImportadosAtuais=extrairContatosDoTexto(document.getElementById('import_texto').value);\n        renderPreviewImportacao();\n      }\n\n      if(!contatosImportadosAtuais.length){\n        throw new Error('Nenhum e-mail válido encontrado.');\n      }\n\n      const grupoNovo=document.getElementById('import_grupo').value.trim();\n      const grupoExistente=document.getElementById('import_grupo_existente').value.trim();\n\n      await enviarPayload({\n        acao:'importar_contatos',\n        grupo:grupoNovo||grupoExistente,\n        contatos:contatosImportadosAtuais\n      });\n\n      mostrarAviso(\n        'Contatos enviados para salvar',\n        'Os contatos foram enviados para o n8n. Atualize o painel em alguns segundos. O envio continua sendo feito pelo botão Enviar.'\n      );\n    }catch(err){\n      mostrarAviso('Não foi possível importar','Detalhe: '+(err.message||err),'erro');\n    }\n  });\n}\n\n\nfunction smartTextToHtml(text){\n  return String(text||'').trim().split(/\\\\n{2,}/).filter(Boolean).map(p=>'<p>'+escapeHtmlClient(p).replace(/\\\\n/g,'<br>')+'</p>').join('\\\\n');\n}\n\nfunction smartEnsureAfter(el, id, html){\n  if(!el) return null;\n  let existing=document.getElementById(id);\n  if(existing) return existing;\n  const wrap=document.createElement('div');\n  wrap.innerHTML=html.trim();\n  const node=wrap.firstElementChild;\n  el.insertAdjacentElement('afterend',node);\n  return node;\n}\n\nfunction smartContarMarcados(modalId){\n  return Array.from(document.querySelectorAll(modalId+' input[type=\"checkbox\"][name=\"selecionados\"]')).filter(c=>c.checked).length;\n}\n\nfunction smartifyMensagem(){\n  const modal=document.getElementById('modal_mensagem');\n  if(!modal)return;\n  const assunto=modal.querySelector('input[name=\"assunto\"]');\n  const texto=modal.querySelector('textarea[name=\"mensagem_texto\"]');\n  if(!assunto||!texto)return;\n  const box=smartEnsureAfter(texto.closest('.field'), 'smart_mensagem_preview', '<div class=\"smart-box\"><div class=\"smart-title\">Prévia automática da mensagem</div><div class=\"muted\" id=\"smart_msg_status\"></div><div class=\"smart-preview\" id=\"smart_msg_preview\"></div></div>');\n  const status=document.getElementById('smart_msg_status');\n  const preview=document.getElementById('smart_msg_preview');\n  function render(){\n    const a=(assunto.value||'').trim();\n    const t=(texto.value||'').trim();\n    const palavras=t?t.split(/\\\\s+/).filter(Boolean).length:0;\n    const linhas=t?t.split(/\\\\n/).length:0;\n    status.innerHTML=(a?'<span class=\"smart-ok\">assunto ok</span>':'<span class=\"smart-erro\">assunto vazio</span>')+' · '+palavras+' palavras · '+linhas+' linhas';\n    preview.innerHTML='<div style=\"font-weight:950;margin-bottom:8px\">'+escapeHtmlClient(a||'Sem assunto')+'</div>'+smartTextToHtml(t||'Escreva a mensagem aqui...');\n  }\n  assunto.addEventListener('input',render);\n  texto.addEventListener('input',render);\n  render();\n}\n\nfunction smartifyTeste(){\n  const modal=document.getElementById('modal_teste');\n  if(!modal)return;\n  const email=modal.querySelector('input[name=\"email_teste\"]');\n  const zone=document.getElementById('zona_teste');\n  const input=document.getElementById('anexo_teste');\n  smartEnsureAfter(zone, 'smart_teste_status', '<div class=\"smart-box\"><div class=\"smart-title\">Checklist do teste</div><div class=\"muted\" id=\"smart_teste_texto\"></div></div>');\n  const txt=document.getElementById('smart_teste_texto');\n  function render(){\n    const emailOk=email && /^[^\\\\s@]+@[^\\\\s@]+\\\\.[^\\\\s@]+$/.test((email.value||'').trim());\n    const qtd=input?.files?.length||0;\n    const tamanho=Array.from(input?.files||[]).reduce((s,f)=>s+f.size,0);\n    txt.innerHTML=(emailOk?'<span class=\"smart-ok\">e-mail válido</span>':'<span class=\"smart-warn\">informe um e-mail válido</span>')+' · '+qtd+' anexo(s) · '+Math.round(tamanho/1024)+' KB';\n  }\n  email?.addEventListener('input',render);\n  input?.addEventListener('change',render);\n  document.addEventListener('paste',()=>setTimeout(render,120));\n  render();\n}\n\nfunction smartifyEnviar(){\n  const modal=document.getElementById('modal_enviar');\n  if(!modal)return;\n  const group=document.getElementById('filtro_grupo');\n  const search=document.getElementById('busca_clientes');\n  const wrap=modal.querySelector('.contacts-wrap');\n  const rows=Array.from(modal.querySelectorAll('.linha-cliente'));\n  smartEnsureAfter(wrap, 'smart_enviar_status', '<div class=\"smart-box\"><div class=\"smart-title\">Resumo do envio</div><div class=\"muted\" id=\"smart_enviar_texto\"></div><div class=\"smart-kpis\" id=\"smart_enviar_kpis\"></div></div>');\n  const txt=document.getElementById('smart_enviar_texto');\n  const kpis=document.getElementById('smart_enviar_kpis');\n\n  function atualizarResumo(){\n    const marcados=rows.filter(r=>r.querySelector('input[type=\"checkbox\"]')?.checked);\n    const visiveis=rows.filter(r=>r.style.display!=='none');\n    const grupo=(group?.value||'').trim();\n    txt.innerHTML=(grupo?'Grupo ativo: <b>'+escapeHtmlClient(grupo)+'</b>':'Todos / Geral')+' · '+marcados.length+' contato(s) marcados · '+visiveis.length+' visível(is)';\n    kpis.innerHTML='<span class=\"smart-kpi\">marcados: '+marcados.length+'</span><span class=\"smart-kpi\">visíveis: '+visiveis.length+'</span><span class=\"smart-kpi\">total: '+rows.length+'</span>';\n  }\n\n  function selecionarGrupoAutomatico(){\n    const grupo=(group?.value||'').toLowerCase().trim();\n    rows.forEach(row=>{\n      const c=row.querySelector('input[type=\"checkbox\"]');\n      const pertence=grupo && String(row.dataset.groups||'').split('|').includes(grupo);\n      if(c) c.checked=!!pertence;\n      row.classList.toggle('smart-auto-selected',!!pertence);\n    });\n    setTimeout(atualizarResumo,50);\n  }\n\n  group?.addEventListener('change',()=>setTimeout(selecionarGrupoAutomatico,20));\n  search?.addEventListener('input',()=>setTimeout(atualizarResumo,50));\n  rows.forEach(row=>row.querySelector('input[type=\"checkbox\"]')?.addEventListener('change',atualizarResumo));\n  document.getElementById('marcar_visiveis')?.addEventListener('click',()=>setTimeout(atualizarResumo,50));\n  document.getElementById('desmarcar_visiveis')?.addEventListener('click',()=>setTimeout(atualizarResumo,50));\n\n  atualizarResumo();\n}\n\nfunction smartifyImportacao(){\n  const texto=document.getElementById('import_texto');\n  const btn=document.getElementById('btn_prever_importacao');\n  if(!texto||!btn)return;\n  const box=smartEnsureAfter(texto.closest('.field'), 'smart_import_status', '<div class=\"smart-box\"><div class=\"smart-title\">Leitura automática</div><div class=\"muted\" id=\"smart_import_texto\">Cole contatos para a prévia aparecer automaticamente.</div></div>');\n  const status=document.getElementById('smart_import_texto');\n  let timer=null;\n  function prever(){\n    try{\n      contatosImportadosAtuais=extrairContatosDoTexto(texto.value);\n      status.innerHTML=contatosImportadosAtuais.length?'<span class=\"smart-ok\">'+contatosImportadosAtuais.length+' contato(s) encontrados automaticamente</span>':'<span class=\"smart-warn\">nenhum e-mail válido encontrado ainda</span>';\n      if(contatosImportadosAtuais.length) renderPreviewImportacao();\n    }catch(e){\n      status.innerHTML='<span class=\"smart-erro\">não consegui ler esse texto</span>';\n    }\n  }\n  texto.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(prever,450);});\n  texto.addEventListener('paste',()=>{clearTimeout(timer);timer=setTimeout(prever,250);});\n  prever();\n}\n\nfunction smartifyConfig(){\n  const modal=document.getElementById('modal_config');\n  if(!modal)return;\n  const lote=modal.querySelector('input[name=\"lote_quantidade\"]');\n  const intervalo=modal.querySelector('input[name=\"intervalo_valor\"]');\n  const unidade=modal.querySelector('select[name=\"intervalo_unidade\"]');\n  const ativo=modal.querySelector('input[name=\"parcelado_ativo\"]');\n  const row=modal.querySelector('.row');\n  smartEnsureAfter(row, 'smart_config_preview', '<div class=\"smart-box\"><div class=\"smart-title\">Como o envio vai funcionar</div><div class=\"muted\" id=\"smart_config_texto\"></div></div>');\n  const txt=document.getElementById('smart_config_texto');\n  function render(){\n    const l=Number(lote?.value||0);\n    const h=Number(intervalo?.value||0);\n    const u=unidade?.value||'horas';\n    const dias=u==='horas'?h/24:0;\n    let intervaloTxt=u==='horas'?(h===48?'48 horas = 2 dias':(h>=24 && h%24===0?h+' horas = '+dias+' dia(s)':h+' hora(s)')):h+' minuto(s)';\n    if(!ativo?.checked) txt.innerHTML='Parcelamento desativado: o envio normal vai para todos os contatos marcados de uma vez.';\n    else if(l<=0) txt.innerHTML='Quantidade por lote = 0: envia todos os contatos marcados de uma vez, sem fila.';\n    else txt.innerHTML='Vai enviar no máximo <b>'+l+'</b> contato(s) por lote. Próximo lote a cada <b>'+intervaloTxt+'</b>.';\n  }\n  lote?.addEventListener('input',render);\n  intervalo?.addEventListener('input',render);\n  unidade?.addEventListener('change',render);\n  ativo?.addEventListener('change',render);\n  render();\n}\n\nfunction smartifyGruposExtra(){\n  const modal=document.getElementById('modal_grupo');\n  if(!modal)return;\n  const select=document.getElementById('grupo_ativo_inteligente');\n  const nome=document.getElementById('grupo_nome_inteligente');\n  const wrap=modal.querySelector('.contacts-wrap');\n  smartEnsureAfter(wrap, 'smart_grupo_extra', '<div class=\"smart-box\"><div class=\"smart-title\">Resumo do grupo</div><div class=\"muted\" id=\"smart_grupo_resumo\"></div></div>');\n  const resumo=document.getElementById('smart_grupo_resumo');\n  function render(){\n    const qtd=smartContarMarcados('#modal_grupo');\n    const g=(nome?.value||select?.value||'').trim();\n    resumo.innerHTML=(g?'Grupo: <b>'+escapeHtmlClient(g)+'</b>':'Novo grupo')+' · '+qtd+' contato(s) marcado(s). Ao salvar, o grupo fica exatamente com esses contatos.';\n  }\n  modal.querySelectorAll('input[type=\"checkbox\"][name=\"selecionados\"]').forEach(c=>c.addEventListener('change',render));\n  select?.addEventListener('change',()=>setTimeout(render,80));\n  nome?.addEventListener('input',render);\n  document.getElementById('marcar_grupo_visiveis')?.addEventListener('click',()=>setTimeout(render,80));\n  document.getElementById('desmarcar_grupo_visiveis')?.addEventListener('click',()=>setTimeout(render,80));\n  render();\n}\n\nfunction smartifyAllScreens(){\n  smartifyMensagem();\n  smartifyTeste();\n  smartifyEnviar();\n  smartifyImportacao();\n  smartifyConfig();\n  smartifyGruposExtra();\n}\n\nsetupFilter();setupFiltroGrupoExistente();setupDropzone('zona_mensagem','anexo_mensagem','lista_mensagem');setupDropzone('zona_teste','anexo_teste','lista_teste');setupDropzone('zona_envio','anexo_envio','lista_envio');setupImportacao();smartifyAllScreens();\n</script></body></html>`;\nreturn [{ json: { html } }];\n"
+      },
+      "id": "503ffe2b-9ab5-4404-acbc-61e1916c41f1",
+      "name": "Gerar Painel HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24448,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "f4772417-4eaf-422f-837c-dbd53fe0a025",
+      "name": "Responder Painel",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        24672,
+        4768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\n\nconst rawBody = $json.body ?? $json;\nlet body = rawBody;\nif (typeof rawBody === 'string') {\n  try { body = JSON.parse(rawBody); } catch { body = {}; }\n}\nbody = body || {};\n\nconst acao = String(body.acao || '').trim();\nconst configPath = '/files/mala_config.json';\nconst extrasPath = '/files/clientes_adicionados.json';\nconst gruposPath = '/files/grupos_mala_direta.json';\nconst envioConfigPath = '/files/mala_envio_config.json';\nconst filaPath = '/files/mala_fila_envio.json';\nconst enviadosPath = '/files/mala_campanhas_enviados.json';\n\nfunction readJson(path, fallback) {\n  try { return JSON.parse(fs.readFileSync(path, 'utf8').replace(/^\\uFEFF/, '')); } catch { return fallback; }\n}\nfunction writeJson(path, value) { fs.writeFileSync(path, JSON.stringify(value, null, 2), 'utf8'); }\nfunction horasDepois(h){ return new Date(Date.now() + (Number(h)||1)*60*60*1000).toISOString(); }\nfunction getEnvioConfig(){ const c = readJson(envioConfigPath, {parcelado_ativo:true,lote_quantidade:50,intervalo_valor:12,intervalo_unidade:'horas',protecao_global:true}); const valor = c.intervalo_valor !== undefined ? c.intervalo_valor : c.intervalo_horas; return {parcelado_ativo:c.parcelado_ativo!==false,lote_quantidade:Math.max(0,Number(c.lote_quantidade ?? 50)),intervalo_valor:Math.max(1,Number(valor||12)),intervalo_unidade:String(c.intervalo_unidade||'horas')==='minutos'?'minutos':'horas',protecao_global:c.protecao_global!==false}; }\nfunction dataDepois(valor, unidade){ const ms = (String(unidade)==='minutos' ? Number(valor)*60*1000 : Number(valor)*60*60*1000); return new Date(Date.now() + (ms||60*60*1000)).toISOString(); }\nfunction campanhaId(assunto, mensagem){ return hashCampanhaTexto(String(assunto||'')+'\\n'+String(mensagem||''), ''); }\nfunction filtrarJaEnviados(contatos, campId, permitirReenvio){ if(permitirReenvio) return contatos; const store=readJson(enviadosPath,{}); const emails=store[campId]?.emails||{}; return contatos.filter(c=>!emails[String(c.email||'').trim().toLowerCase()]); }\nfunction juntarAnexosPadrao(configAtual, body){ const padrao=Array.isArray(configAtual.anexos_base64)?configAtual.anexos_base64:[]; const extras=Array.isArray(body.anexos_base64)?body.anexos_base64:[]; return [...padrao, ...extras]; }\nfunction normalizeArray(value) { if (Array.isArray(value)) return value; if (value === undefined || value === null || value === '') return []; return [value]; }\nfunction juntarUnicos(lista) {\n  const map = new Map();\n  for (const item of lista) {\n    const email = String(item?.email || '').trim().toLowerCase();\n    const empresa = String(item?.empresa || item?.nome || '').trim() || email.split('@')[0];\n    if (!email || !email.includes('@')) continue;\n    if (!map.has(email)) map.set(email, { empresa, email });\n  }\n  return [...map.values()];\n}\nfunction safeName(name) { return String(name || 'anexo.bin').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120) || 'anexo.bin'; }\nasync function anexosParaBinary(anexosInput) {\n  const anexos = Array.isArray(anexosInput) ? anexosInput : (Array.isArray(body.anexos_base64) ? body.anexos_base64 : []);\n  const binary = {};\n  let i = 1;\n  for (const anexo of anexos) {\n    const data = String(anexo?.data || '').replace(/^data:.*?;base64,/, '');\n    if (!data) continue;\n    const fileName = safeName(anexo.fileName || `anexo_${i}.bin`);\n    const mimeType = String(anexo.mimeType || 'application/octet-stream');\n    const buffer = Buffer.from(data, 'base64');\n    binary[`anexo_${i}`] = await this.helpers.prepareBinaryData(buffer, fileName, mimeType);\n    i++;\n  }\n  return binary;\n}\n\ntry {\n  if (acao === 'salvar') {\n    const assunto = String(body.assunto || '').trim();\n    const mensagem_texto = String(body.mensagem_texto || body.mensagem || '').trim();\n    if (!assunto || !mensagem_texto) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Assunto e mensagem são obrigatórios.' } }];\n    const antigo = readJson(configPath, {});\n    const novosAnexos = Array.isArray(body.anexos_base64) ? body.anexos_base64 : [];\n    const manter = String(body.manter_anexos || '').toLowerCase() === 'sim';\n    const anexos_base64 = novosAnexos.length ? novosAnexos : (manter ? (Array.isArray(antigo.anexos_base64) ? antigo.anexos_base64 : []) : []);\n    writeJson(configPath, { assunto, mensagem_texto, anexos_base64, atualizado_em: new Date().toISOString() });\n    return [{ json: { tipo: 'responder', status: 'ok', mensagem: 'Mensagem salva.' } }];\n  }\n\n  if (acao === 'salvar_configuracao') {\n    const parcelado_ativo = body.parcelado_ativo === 'sim' || body.parcelado_ativo === true;\n    const lote_quantidade = Math.max(0, Math.min(500, Number(body.lote_quantidade ?? 50)));\n    const intervalo_valor = Math.max(1, Math.min(10080, Number(body.intervalo_valor || body.intervalo_horas || 12)));\n    const intervalo_unidade = String(body.intervalo_unidade || 'horas') === 'minutos' ? 'minutos' : 'horas';\n    const protecao_global = body.protecao_global === 'sim' || body.protecao_global === true;\n    writeJson(envioConfigPath, { parcelado_ativo, lote_quantidade, intervalo_valor, intervalo_unidade, protecao_global, atualizado_em: new Date().toISOString() });\n    return [{ json: { tipo: 'responder', status: 'ok', mensagem: 'Configuração salva.' } }];\n  }\n\n  if (acao === 'adicionar_contato') {\n    const novoNome = String(body.novo_nome || '').trim();\n    const novoEmail = String(body.novo_email || '').trim().toLowerCase();\n    if (!novoNome || !novoEmail || !novoEmail.includes('@')) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Contato inválido.' } }];\n    const lista = Array.isArray(readJson(extrasPath, [])) ? readJson(extrasPath, []) : [];\n    const idx = lista.findIndex(i => String(i.email || '').trim().toLowerCase() === novoEmail);\n    if (idx >= 0) lista[idx] = { empresa: novoNome, email: novoEmail, atualizado_em: new Date().toISOString() };\n    else lista.push({ empresa: novoNome, email: novoEmail, criado_em: new Date().toISOString() });\n    writeJson(extrasPath, lista);\n    return [{ json: { tipo: 'responder', status: 'ok', mensagem: 'Contato salvo.' } }];\n  }\n\n\n  if (acao === 'importar_contatos') {\n    const contatos = Array.isArray(body.contatos) ? body.contatos : [];\n    const grupo = String(body.grupo || '').trim();\n    const lista = Array.isArray(readJson(extrasPath, [])) ? readJson(extrasPath, []) : [];\n    const grupos = readJson(gruposPath, {});\n    if (grupo && !Array.isArray(grupos[grupo])) grupos[grupo] = [];\n    const existentes = new Map(lista.map(c => [String(c.email || '').trim().toLowerCase(), c]));\n    let adicionados = 0, atualizados = 0, ignorados = 0;\n    for (const c of contatos) {\n      const email = String(c.email || '').trim().toLowerCase();\n      const empresa = String(c.empresa || c.nome || '').trim() || email.split('@')[0];\n      if (!email || !email.includes('@')) { ignorados++; continue; }\n      if (existentes.has(email)) {\n        const atual = existentes.get(email);\n        if (empresa && (!atual.empresa || atual.empresa === email.split('@')[0])) atual.empresa = empresa;\n        if (grupo) atual.grupo = grupo;\n        atual.atualizado_em = new Date().toISOString();\n        atualizados++;\n      } else {\n        const novo = { empresa, email, grupo, criado_em: new Date().toISOString(), origem: 'importacao' };\n        lista.push(novo);\n        existentes.set(email, novo);\n        adicionados++;\n      }\n      if (grupo && !grupos[grupo].includes(email)) grupos[grupo].push(email);\n    }\n    writeJson(extrasPath, lista);\n    writeJson(gruposPath, grupos);\n    return [{ json: { tipo: 'responder', status: 'ok', mensagem: `Importação salva. Novos: ${adicionados}. Já existiam/atualizados: ${atualizados}. Ignorados: ${ignorados}.` } }];\n  }\n\n  if (acao === 'salvar_grupo_inteligente') {\n    const grupoAntigo = String(body.grupo_antigo || '').trim();\n    const grupoNome = String(body.grupo_nome || grupoAntigo || '').trim();\n    if (!grupoNome) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Informe o nome do grupo.' } }];\n\n    const selecionados = normalizeArray(body.selecionados).map(v => {\n      const [email, ...rest] = String(v || '').split('||');\n      return { email: String(email || '').trim().toLowerCase(), empresa: rest.join('||').trim() || String(email || '').split('@')[0] };\n    });\n    const contatos = juntarUnicos(selecionados);\n    const emails = contatos.map(c => c.email);\n\n    const grupos = readJson(gruposPath, {});\n    if (grupoAntigo && grupoAntigo !== grupoNome && Array.isArray(grupos[grupoAntigo])) delete grupos[grupoAntigo];\n    grupos[grupoNome] = emails;\n\n    const lista = Array.isArray(readJson(extrasPath, [])) ? readJson(extrasPath, []) : [];\n    const emailsSet = new Set(emails);\n    for (const item of lista) {\n      const email = String(item.email || '').trim().toLowerCase();\n      const gAtual = String(item.grupo || '').trim();\n      if (emailsSet.has(email)) item.grupo = grupoNome;\n      else if (gAtual === grupoNome || (grupoAntigo && gAtual === grupoAntigo)) delete item.grupo;\n      if (gAtual === grupoAntigo || emailsSet.has(email)) item.atualizado_em = new Date().toISOString();\n    }\n\n    writeJson(gruposPath, grupos);\n    writeJson(extrasPath, lista);\n    return [{ json: { tipo: 'responder', status: 'ok', mensagem: `Grupo \"${grupoNome}\" salvo com ${emails.length} contatos.` } }];\n  }\n\n  if (acao === 'criar_grupo') {\n    const grupoNome = String(body.grupo_nome || body.grupo_existente || '').trim();\n    if (!grupoNome) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Informe ou escolha o nome do grupo.' } }];\n\n    const selecionados = normalizeArray(body.selecionados).map(v => {\n      const [email, ...rest] = String(v || '').split('||');\n      return { email: String(email || '').trim().toLowerCase(), empresa: rest.join('||').trim() || String(email || '').split('@')[0] };\n    });\n    const contatos = juntarUnicos(selecionados);\n\n    const grupos = readJson(gruposPath, {});\n    if (!Array.isArray(grupos[grupoNome])) grupos[grupoNome] = [];\n\n    const lista = Array.isArray(readJson(extrasPath, [])) ? readJson(extrasPath, []) : [];\n    const extrasMap = new Map(lista.map(c => [String(c.email || '').trim().toLowerCase(), c]));\n\n    for (const c of contatos) {\n      if (!grupos[grupoNome].includes(c.email)) grupos[grupoNome].push(c.email);\n      if (extrasMap.has(c.email)) {\n        extrasMap.get(c.email).grupo = grupoNome;\n        extrasMap.get(c.email).atualizado_em = new Date().toISOString();\n      }\n    }\n\n    writeJson(gruposPath, grupos);\n    writeJson(extrasPath, lista);\n    return [{ json: { tipo: 'responder', status: 'ok', mensagem: `Grupo \"${grupoNome}\" salvo com ${grupos[grupoNome].length} contatos. Novos marcados agora: ${contatos.length}.` } }];\n  }\n\n  if (acao === 'renomear_grupo') {\n    const grupoAntigo = String(body.grupo_antigo || '').trim();\n    const grupoNovo = String(body.grupo_novo || '').trim();\n    if (!grupoAntigo || !grupoNovo) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Escolha o grupo atual e informe o novo nome.' } }];\n\n    const grupos = readJson(gruposPath, {});\n    if (!Array.isArray(grupos[grupoAntigo])) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Grupo antigo não encontrado.' } }];\n\n    if (grupoAntigo !== grupoNovo) {\n      const contatosAntigos = Array.isArray(grupos[grupoAntigo]) ? grupos[grupoAntigo] : [];\n      const contatosNovos = Array.isArray(grupos[grupoNovo]) ? grupos[grupoNovo] : [];\n      grupos[grupoNovo] = [...new Set([...contatosNovos, ...contatosAntigos])];\n      delete grupos[grupoAntigo];\n\n      const lista = Array.isArray(readJson(extrasPath, [])) ? readJson(extrasPath, []) : [];\n      for (const item of lista) {\n        if (String(item.grupo || '').trim() === grupoAntigo) item.grupo = grupoNovo;\n      }\n      writeJson(extrasPath, lista);\n    }\n\n    writeJson(gruposPath, grupos);\n    return [{ json: { tipo: 'responder', status: 'ok', mensagem: `Grupo renomeado para \"${grupoNovo}\".` } }];\n  }\n\n  if (acao === 'excluir_grupo') {\n    const grupoNome = String(body.grupo_nome || '').trim();\n    if (!grupoNome) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Escolha um grupo para excluir.' } }];\n    if (body.confirmar_exclusao !== 'sim') return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Exclusão não confirmada.' } }];\n\n    const grupos = readJson(gruposPath, {});\n    delete grupos[grupoNome];\n\n    const lista = Array.isArray(readJson(extrasPath, [])) ? readJson(extrasPath, []) : [];\n    for (const item of lista) {\n      if (String(item.grupo || '').trim() === grupoNome) delete item.grupo;\n    }\n\n    writeJson(gruposPath, grupos);\n    writeJson(extrasPath, lista);\n    return [{ json: { tipo: 'responder', status: 'ok', mensagem: `Grupo \"${grupoNome}\" excluído. Os contatos foram mantidos.` } }];\n  }\n\n\n  if (acao === 'teste_unico') {\n    const nome_teste = String(body.nome_teste || 'Teste').trim() || 'Teste';\n    const email_teste = String(body.email_teste || '').trim().toLowerCase();\n    if (!email_teste || !email_teste.includes('@')) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'E-mail de teste inválido.' } }];\n    const configAtual = readJson(configPath, { assunto: 'Comunicado Vesper', mensagem_texto: '' });\n    const anexos_base64 = juntarAnexosPadrao(configAtual, body);\n    const binary = await anexosParaBinary.call(this, anexos_base64);\n    return [{ json: { tipo: 'enviar', modo: 'direto', origem: 'teste_unico', responder: false, destinatarios_diretos: [{ empresa: nome_teste, email: email_teste }], filtro: '', limite: 0, campanha_id: 'teste' }, binary }];\n  }\n\n  if (acao === 'enviar_destinatarios') {\n    if (body.confirmar !== 'sim') return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Envio não confirmado.' } }];\n    const selecionados = normalizeArray(body.selecionados).map(v => {\n      const [email, ...rest] = String(v || '').split('||');\n      return { email: String(email || '').trim().toLowerCase(), empresa: rest.join('||').trim() || String(email || '').split('@')[0] };\n    });\n    let destinatarios_diretos = juntarUnicos(selecionados);\n    if (!destinatarios_diretos.length) return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Nenhum contato marcado.' } }];\n\n    const envioCfg = getEnvioConfig();\n    const configAtual = readJson(configPath, { assunto: 'Comunicado Vesper', mensagem_texto: '' });\n    const anexos_base64 = juntarAnexosPadrao(configAtual, body);\n    const campId = campanhaId(String(configAtual.assunto || 'Comunicado Vesper'), String(configAtual.mensagem_texto || configAtual.mensagem || ''));\n    const permitirReenvio = !(String(body.evitar_reenvio || '').toLowerCase() === 'sim') || envioCfg.protecao_global === false;\n    const antesFiltro = destinatarios_diretos.length;\n    destinatarios_diretos = filtrarJaEnviados(destinatarios_diretos, campId, permitirReenvio);\n    if (!destinatarios_diretos.length) return [{ json: { tipo: 'responder', status: 'erro', mensagem: `Todos os ${antesFiltro} contato(s) marcados já receberam esta campanha. Para reenviar, desmarque a proteção anti-reenvio.` } }];\n\n    if (envioCfg.parcelado_ativo && envioCfg.lote_quantidade > 0 && destinatarios_diretos.length > envioCfg.lote_quantidade) {\n      const primeiroLote = destinatarios_diretos.slice(0, envioCfg.lote_quantidade);\n      const restantes = destinatarios_diretos.slice(envioCfg.lote_quantidade);\n      const fila = Array.isArray(readJson(filaPath, [])) ? readJson(filaPath, []) : [];\n      fila.push({\n        id: 'camp_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),\n        campanha_id: campId,\n        criado_em: new Date().toISOString(),\n        proxima_execucao: dataDepois(envioCfg.intervalo_valor, envioCfg.intervalo_unidade),\n        lote_quantidade: envioCfg.lote_quantidade,\n        intervalo_valor: envioCfg.intervalo_valor,\n        intervalo_unidade: envioCfg.intervalo_unidade,\n        assunto_snapshot: String(configAtual.assunto || 'Comunicado Vesper'),\n        mensagem_texto_snapshot: String(configAtual.mensagem_texto || configAtual.mensagem || ''),\n        anexos_base64,\n        contatos: restantes\n      });\n      writeJson(filaPath, fila);\n      destinatarios_diretos = primeiroLote;\n    }\n\n    const binary = await anexosParaBinary.call(this, anexos_base64);\n    return [{ json: { tipo: 'enviar', modo: 'direto', origem: 'selecionados', responder: false, destinatarios_diretos, filtro: '', limite: 0, campanha_id: campId, assunto_snapshot: String(configAtual.assunto || ''), mensagem_texto_snapshot: String(configAtual.mensagem_texto || configAtual.mensagem || '') }, binary }];\n  }\n\n  return [{ json: { tipo: 'responder', status: 'erro', mensagem: 'Ação inválida.' } }];\n} catch (error) {\n  return [{ json: { tipo: 'responder', status: 'erro', mensagem: String(error.message || error) } }];\n}\n"
+      },
+      "id": "b30f2f8e-04c0-4488-b07b-25d4de5685f2",
+      "name": "Roteador da Ação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24000,
+        5440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "343ddd4e-925c-488a-b65e-2ad02a64fc86",
+              "leftValue": "={{ $json.tipo }}",
+              "rightValue": "responder",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e914ed6d-e7d9-4cfe-827c-e2707a1fdebb",
+      "name": "É Resposta Simples?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        24224,
+        5440
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "15ff25a8-f171-404a-b4c5-a0202e7eb782",
+      "name": "Responder Salvar/Bloqueio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        23776,
+        4992
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "94513599-b217-4608-a4b8-93669345b7cd",
+      "name": "Verificar Fila A Cada 1 Minuto",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        24000,
+        5632
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nreturn [{json:{tipo:'enviar',modo:'lista',origem:'automatico',responder:false,filtro:'',limite:0,anexos:[],destinatarios_diretos:[]}}];\n"
+      },
+      "id": "a8a6d3bf-e05b-490e-99eb-8697e501a619",
+      "name": "Origem Automática",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24224,
+        5824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst input = $input.first();\nconst inputJson = input.json || {};\nconst inputBinary = input.binary || {};\nconst configPath = '/files/mala_config.json';\nconst assinaturaPath = '/files/assinatura_vesper.html';\n\nfunction escapeHtml(value) {\n  return String(value || '')\n    .replaceAll('&', '&amp;')\n    .replaceAll('<', '&lt;')\n    .replaceAll('>', '&gt;')\n    .replaceAll('\"', '&quot;')\n    .replaceAll(\"'\", '&#039;');\n}\nfunction htmlToText(value) {\n  return String(value || '')\n    .replace(/^\\uFEFF/, '')\n    .replace(/<br\\s*\\/?\\s*>/gi, '\\n')\n    .replace(/<\\/p>/gi, '\\n\\n')\n    .replace(/<p[^>]*>/gi, '')\n    .replace(/<[^>]+>/g, '')\n    .replaceAll('&nbsp;', ' ')\n    .replaceAll('&lt;', '<')\n    .replaceAll('&gt;', '>')\n    .replaceAll('&amp;', '&')\n    .replaceAll('&quot;', '\"')\n    .trim();\n}\nfunction textToHtml(value) {\n  const text = String(value || '').trim();\n  if (!text) return '';\n  return text.split(/\\n{2,}/).map(paragrafo => '<p>' + escapeHtml(paragrafo).replace(/\\n/g, '<br>') + '</p>').join('\\n');\n}\nconst defaultConfig = { assunto: 'Comunicado Vesper', mensagem_texto: 'Olá {{nome}}, tudo bem?\\n\\nEscreva aqui a mensagem que será enviada.', atualizado_em: new Date().toISOString() };\nif (!fs.existsSync(configPath)) fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2), 'utf8');\nlet config = {};\ntry { config = JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\\uFEFF/, '')); } catch { config = defaultConfig; }\nlet assinaturaHtml = '';\ntry {\n  assinaturaHtml = fs.readFileSync(assinaturaPath, 'utf8').replace(/^\\uFEFF/, '').replace(/<meta[^>]*>/gi, '').replace(/<link[^>]*>/gi, '').replace(/href=[\"']www\\.vesper\\.ind\\.br[\"']/gi, 'href=\"http://www.example.com\"');\n} catch {\n  assinaturaHtml = '<p>Atenciosamente,</p><div style=\"color:red;font-weight:bold;font-size:20px;\">Empresa EX LTDA</div><a href=\"mailto:sender@example.com\">sender@example.com</a><br><a href=\"http://www.example.com\">www.example.com</a>';\n}\nconst assunto = String(inputJson.assunto_snapshot || config.assunto || defaultConfig.assunto).trim();\nlet mensagemTexto = '';\nif (typeof inputJson.mensagem_texto_snapshot === 'string' && inputJson.mensagem_texto_snapshot.trim()) mensagemTexto = inputJson.mensagem_texto_snapshot.trim();\nelse if (typeof config.mensagem_texto === 'string' && config.mensagem_texto.trim()) mensagemTexto = config.mensagem_texto.trim();\nelse if (typeof config.mensagem === 'string' && config.mensagem.trim()) mensagemTexto = htmlToText(config.mensagem);\nelse mensagemTexto = defaultConfig.mensagem_texto;\nconst mensagemHtml = textToHtml(mensagemTexto);\nfunction hashCampanhaTexto(assunto, mensagem) {\n  const texto = String(assunto || '') + '\\n' + String(mensagem || '');\n  let h = 2166136261;\n  for (let i = 0; i < texto.length; i++) {\n    h ^= texto.charCodeAt(i);\n    h = Math.imul(h, 16777619);\n  }\n  return (h >>> 0).toString(16).padStart(8, '0');\n}\nconst campId = String(inputJson.campanha_id || hashCampanhaTexto(assunto, mensagemTexto));\nreturn [{ json: { tipo: 'enviar', modo: inputJson.modo || 'lista', origem: inputJson.origem || 'automatico', responder: inputJson.responder === true || inputJson.responder === 'true', filtro: String(inputJson.filtro || '').toLowerCase(), limite: Number(inputJson.limite || 0), destinatarios_diretos: Array.isArray(inputJson.destinatarios_diretos) ? inputJson.destinatarios_diretos : [], campanha_id: campId, assunto, mensagem_texto: mensagemTexto, mensagem_html: mensagemHtml, assinatura_html: assinaturaHtml }, binary: inputBinary }];\n"
+      },
+      "id": "9854c8dd-4c8f-40ae-b99a-34bc1b673a69",
+      "name": "Ler Configuração",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24448,
+        5632
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "058daab9-0d99-4f26-80d9-ea562c3eeb6d",
+              "leftValue": "={{ $json.modo }}",
+              "rightValue": "lista",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1072d6b8-3b4a-4aa8-8d0e-8aead43fcaee",
+      "name": "Usa Planilha?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        24672,
+        5632
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/clientes_mala_direta_limpo.xlsx",
+        "options": {
+          "fileExtension": "xlsx",
+          "fileName": "clientes_mala_direta_limpo.xlsx",
+          "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+      },
+      "id": "8cf4f2b2-a9dc-40e7-bcf3-b9e7a9c266f8",
+      "name": "Ler Planilha Excel",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        24896,
+        5728
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "headerRow": true,
+          "sheetName": "Clientes_Validos"
+        }
+      },
+      "id": "262bb618-0df5-4816-b3ac-3d1ef580f560",
+      "name": "Extrair XLSX",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        25120,
+        5728
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst configItem = $('Ler Configuração').first();\nconst config = configItem.json;\nconst binary = configItem.binary || {};\nconst rows = $input.all();\nconst extrasPath = '/files/clientes_adicionados.json';\nfunction preencher(texto, empresa, email) { return String(texto ?? '').replaceAll('{{nome}}', empresa).replaceAll('{nome}', empresa).replaceAll('{{empresa}}', empresa).replaceAll('{empresa}', empresa).replaceAll('{{email}}', email).replaceAll('{email}', email); }\nfunction montarMensagem(empresa, email) { return `${preencher(config.mensagem_html, empresa, email)}<br><br>${String(config.assinatura_html || '').trim()}`; }\nfunction addCliente(lista, usados, empresa, email, origemInterna) { empresa = String(empresa || '').trim(); email = String(email || '').trim().toLowerCase(); if (!empresa || !email || !email.includes('@') || usados.has(email)) return; const busca = `${empresa} ${email}`.toLowerCase(); const filtro = String(config.filtro || '').toLowerCase().trim(); if (filtro && !busca.includes(filtro)) return; usados.add(email); lista.push({ json: { origem: config.origem, modo: filtro ? 'lista_filtrada' : 'lista', responder: config.responder, empresa, email, assunto: preencher(config.assunto, empresa, email), mensagem: montarMensagem(empresa, email), campanha_id: config.campanha_id, tem_anexos: Object.keys(binary || {}).length > 0, origem_interna: origemInterna || 'planilha' }, binary }); }\nconst clientes = [];\nconst usados = new Set();\nfor (const item of rows) { const row = item.json || {}; addCliente(clientes, usados, row.empresa || row.Empresa || row.nome || row.Nome || row.cliente || row.Cliente || '', row.email || row.Email || row.e_mail || row['e-mail'] || '', 'planilha'); }\nlet extras = [];\ntry { const parsed = JSON.parse(fs.readFileSync(extrasPath, 'utf8').replace(/^\\uFEFF/, '')); if (Array.isArray(parsed)) extras = parsed; } catch {}\nfor (const item of extras) addCliente(clientes, usados, item.empresa || item.nome || '', item.email || '', 'manual');\nconst limite = Number(config.limite || 0);\nreturn limite > 0 ? clientes.slice(0, limite) : clientes;\n"
+      },
+      "id": "987465fe-27ef-4835-8479-399a151a6001",
+      "name": "Preparar Clientes da Planilha",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        25344,
+        5728
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const configItem = $('Ler Configuração').first();\nconst config = configItem.json;\nconst binary = configItem.binary || {};\nfunction preencher(texto, empresa, email) { return String(texto ?? '').replaceAll('{{nome}}', empresa).replaceAll('{nome}', empresa).replaceAll('{{empresa}}', empresa).replaceAll('{empresa}', empresa).replaceAll('{{email}}', email).replaceAll('{email}', email); }\nfunction montarMensagem(empresa, email) { return `${preencher(config.mensagem_html, empresa, email)}<br><br>${String(config.assinatura_html || '').trim()}`; }\nconst destinatarios = Array.isArray(config.destinatarios_diretos) ? config.destinatarios_diretos : [];\nconst saida = [];\nconst usados = new Set();\nfor (const d of destinatarios) {\n  const empresa = String(d.empresa || d.nome || '').trim() || String(d.email || '').split('@')[0];\n  const email = String(d.email || '').trim().toLowerCase();\n  if (!email || !email.includes('@') || usados.has(email)) continue;\n  usados.add(email);\n  saida.push({ json: { origem: config.origem, modo: config.origem === 'teste_unico' ? 'unico' : 'selecionados', responder: config.responder, empresa, email, assunto: preencher(config.assunto, empresa, email), mensagem: montarMensagem(empresa, email), campanha_id: config.campanha_id, tem_anexos: Object.keys(binary || {}).length > 0 }, binary });\n}\nif (!saida.length) throw new Error('Nenhum destinatário válido foi informado.');\nreturn saida;\n"
+      },
+      "id": "27b7a147-2de0-462f-9b53-e571fefce55f",
+      "name": "Preparar Destinatários Diretos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        25344,
+        5536
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map(item => {\n  const binary = item.binary || {};\n  return { json: { ...item.json, tem_anexos: Object.keys(binary).length > 0 }, binary };\n});\n"
+      },
+      "id": "ae198eac-25d8-45d8-ae0e-ffa938e2371f",
+      "name": "Adicionar Anexos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        25568,
+        5632
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0db5d949-826a-44c9-868a-f925d9d5a769",
+              "leftValue": "={{ $json.tem_anexos }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0322d71f-0be8-4753-a9b3-846ec9f5b501",
+      "name": "Tem Anexos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        25792,
+        5632
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "sender@example.com",
+        "toEmail": "={{ $json.email }}",
+        "subject": "={{ $json.assunto }}",
+        "html": "={{ $json.mensagem }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "9c24ee0a-b3e9-4583-b3a9-12cad6e174c9",
+      "name": "Enviar Email SAP Sem Anexo",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        26016,
+        5536
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "webhookId": "0b6d8a78-ff34-4f52-b19e-c5260e990324",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "sender@example.com",
+        "toEmail": "={{ $json.email }}",
+        "subject": "={{ $json.assunto }}",
+        "html": "={{ $json.mensagem }}",
+        "options": {
+          "appendAttribution": true,
+          "attachments": "={{ Object.keys($binary || {}).join(\",\") }}"
+        }
+      },
+      "id": "77fcd53c-f95d-4a30-8cd4-dfe36e79d6fd",
+      "name": "Enviar Email SAP Com Anexo",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        26016,
+        5728
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "webhookId": "d7b05ceb-79ca-4770-8f66-06556ca948bf",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst fs=require('fs');\nconst resultados=$input.all();\nlet clientes=[];\ntry{clientes=$('Adicionar Anexos').all();}catch{clientes=resultados;}\nconst enviadosPath='/files/mala_campanhas_enviados.json';\nfunction readJson(path,fallback){try{return JSON.parse(fs.readFileSync(path,'utf8').replace(/^\\uFEFF/,''));}catch{return fallback;}}\nfunction writeJson(path,value){fs.writeFileSync(path,JSON.stringify(value,null,2),'utf8');}\nconst now=new Date().toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'});\nlet sucesso=0, erro=0;\nconst enviados=readJson(enviadosPath,{});\nfor(let i=0;i<resultados.length;i++){\n  const resultado=resultados[i]?.json||{};\n  const cliente=clientes[i]?.json||resultado;\n  const erroMsg=\n    resultado.error?.message||\n    resultado.error?.description||\n    (typeof resultado.error==='string'?resultado.error:'')||\n    resultado.message?.message||\n    (String(resultado.message||'').toLowerCase().includes('error')?resultado.message:'')||\n    (resultado.ok===false?'Falha informada pelo node de e-mail':'');\n  const status=erroMsg?'erro':'sucesso';\n  if(status==='sucesso')sucesso++; else erro++;\n  const campId=String(cliente.campanha_id||'').trim();\n  const email=String(cliente.email||'').trim().toLowerCase();\n  if(status==='sucesso' && campId && campId!=='teste' && email){\n    if(!enviados[campId]) enviados[campId]={criado_em:new Date().toISOString(),emails:{}};\n    enviados[campId].emails[email]=new Date().toISOString();\n    enviados[campId].atualizado_em=new Date().toISOString();\n  }\n  const log={\n    data_hora:now,\n    campanha_id:campId,\n    origem:cliente.origem||'',\n    modo:cliente.modo||'',\n    empresa:cliente.empresa||'',\n    email,\n    status,\n    anexos:Object.keys(resultados[i]?.binary||{}).length || (Array.isArray(cliente.anexos)?cliente.anexos.length:0),\n    erro:erroMsg||''\n  };\n  fs.appendFileSync('/files/mala_logs.jsonl',JSON.stringify(log)+'\\n','utf8');\n}\nwriteJson(enviadosPath,enviados);\nreturn [{json:{responder:false,total:resultados.length,sucesso,erro,html:''}}];\n"
+      },
+      "id": "2b5c6a0b-f4fa-46be-9e3d-a10bc42b9c71",
+      "name": "Gravar Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        26240,
+        5632
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "069c4807-dacb-4f87-8729-360c1c0d62ef",
+              "leftValue": "={{ $json.responder }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "75728c0d-bba2-45e2-8889-cf2713d0b796",
+      "name": "Precisa Responder?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        23776,
+        6048
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "42c8e7dc-5a0e-4281-9a9b-8aae3cae9c13",
+      "name": "Responder Envio Manual",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        24000,
+        6048
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "id": "43dae429-95c3-4356-91fe-777209fbbd81",
+      "name": "Finalizar Ação Sem Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        23776,
+        5216
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst fs = require('fs');\nconst filaPath = '/files/mala_fila_envio.json';\nconst enviadosPath = '/files/mala_campanhas_enviados.json';\n\nfunction readJson(path, fallback) {\n  try { return JSON.parse(fs.readFileSync(path, 'utf8').replace(/^\\uFEFF/, '')); } catch { return fallback; }\n}\nfunction writeJson(path, value) { fs.writeFileSync(path, JSON.stringify(value, null, 2), 'utf8'); }\nfunction dataDepois(valor, unidade){ const ms = (String(unidade)==='minutos' ? Number(valor)*60*1000 : Number(valor)*60*60*1000); return new Date(Date.now() + (ms||60*60*1000)).toISOString(); }\nfunction filtrarJaEnviados(contatos, campId){ const store=readJson(enviadosPath,{}); const emails=store[campId]?.emails||{}; return contatos.filter(c=>!emails[String(c.email||'').trim().toLowerCase()]); }\nfunction safeName(name) { return String(name || 'anexo.bin').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120) || 'anexo.bin'; }\nasync function anexosParaBinary(anexos) {\n  const binary = {};\n  let i = 1;\n  for (const anexo of (Array.isArray(anexos) ? anexos : [])) {\n    const data = String(anexo?.data || '').replace(/^data:.*?;base64,/, '');\n    if (!data) continue;\n    const fileName = safeName(anexo.fileName || `anexo_${i}.bin`);\n    const mimeType = String(anexo.mimeType || 'application/octet-stream');\n    const buffer = Buffer.from(data, 'base64');\n    binary[`anexo_${i}`] = await this.helpers.prepareBinaryData(buffer, fileName, mimeType);\n    i++;\n  }\n  return binary;\n}\n\nconst fila = Array.isArray(readJson(filaPath, [])) ? readJson(filaPath, []) : [];\nconst agora = new Date();\nconst saida = [];\nconst novaFila = [];\n\nfor (const campanha of fila) {\n  const proxima = campanha.proxima_execucao ? new Date(campanha.proxima_execucao) : new Date(0);\n  const contatos = Array.isArray(campanha.contatos) ? campanha.contatos : [];\n  if (!contatos.length) continue;\n\n  if (saida.length === 0 && proxima <= agora) {\n    const campId = campanha.campanha_id || '';\n    const contatosFiltrados = campId ? filtrarJaEnviados(contatos, campId) : contatos;\n    if (!contatosFiltrados.length) continue;\n    const qtd = Math.max(1, Number(campanha.lote_quantidade || contatosFiltrados.length || 50));\n    const lote = contatosFiltrados.slice(0, qtd);\n    const restantes = contatosFiltrados.slice(qtd);\n    const binary = await anexosParaBinary.call(this, campanha.anexos_base64 || []);\n    saida.push({\n      json: {\n        tipo: 'enviar',\n        modo: 'direto',\n        origem: 'fila_parcelada',\n        campanha_id: campanha.campanha_id || '',\n        responder: false,\n        destinatarios_diretos: lote,\n        filtro: '',\n        limite: 0,\n        assunto_snapshot: campanha.assunto_snapshot || '',\n        mensagem_texto_snapshot: campanha.mensagem_texto_snapshot || ''\n      },\n      binary\n    });\n    if (restantes.length) {\n      campanha.contatos = restantes;\n      campanha.proxima_execucao = dataDepois(campanha.intervalo_valor || campanha.intervalo_horas || 12, campanha.intervalo_unidade || 'horas');\n      novaFila.push(campanha);\n    }\n  } else {\n    novaFila.push(campanha);\n  }\n}\n\nwriteJson(filaPath, novaFila);\nreturn saida;\n"
+      },
+      "id": "3b7d166e-e8c6-492a-92a3-993902f84841",
+      "name": "Processar Fila Parcelada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24224,
+        5632
+      ]
+    }
+  ],
+  "connections": {
+    "Ler Planilha Para Painel": {
+      "main": [
+        [
+          {
+            "node": "Extrair XLSX Para Painel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair XLSX Para Painel": {
+      "main": [
+        [
+          {
+            "node": "Gerar Painel HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Painel HTML": {
+      "main": [
+        [
+          {
+            "node": "Responder Painel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Roteador da Ação": {
+      "main": [
+        [
+          {
+            "node": "É Resposta Simples?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É Resposta Simples?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Ler Configuração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Origem Automática": {
+      "main": [
+        [
+          {
+            "node": "Ler Configuração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Configuração": {
+      "main": [
+        [
+          {
+            "node": "Usa Planilha?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usa Planilha?": {
+      "main": [
+        [
+          {
+            "node": "Ler Planilha Excel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar Destinatários Diretos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Planilha Excel": {
+      "main": [
+        [
+          {
+            "node": "Extrair XLSX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair XLSX": {
+      "main": [
+        [
+          {
+            "node": "Preparar Clientes da Planilha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Clientes da Planilha": {
+      "main": [
+        [
+          {
+            "node": "Adicionar Anexos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Destinatários Diretos": {
+      "main": [
+        [
+          {
+            "node": "Adicionar Anexos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adicionar Anexos": {
+      "main": [
+        [
+          {
+            "node": "Tem Anexos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem Anexos?": {
+      "main": [
+        [
+          {
+            "node": "Enviar Email SAP Com Anexo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar Email SAP Sem Anexo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Email SAP Com Anexo": {
+      "main": [
+        [
+          {
+            "node": "Gravar Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Email SAP Sem Anexo": {
+      "main": [
+        [
+          {
+            "node": "Gravar Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Precisa Responder?": {
+      "main": [
+        [
+          {
+            "node": "Responder Envio Manual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook GET - Painel": {
+      "main": [
+        [
+          {
+            "node": "Ler Planilha Para Painel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook POST - Ações": {
+      "main": [
+        [
+          {
+            "node": "Roteador da Ação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Fila Parcelada": {
+      "main": [
+        [
+          {
+            "node": "Ler Configuração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Fila A Cada 1 Minuto": {
+      "main": [
+        [
+          {
+            "node": "Processar Fila Parcelada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": {
+    "node:Envio Automático Diário": {
+      "recurrenceRules": []
+    },
+    "node:Verificar Fila A Cada 1 Hora": {
+      "recurrenceRules": []
+    },
+    "node:Verificar Fila A Cada 1 Minuto": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "9795eee2-d822-4f34-bcd3-1ace2d5b61f3",
+  "activeVersionId": "9795eee2-d822-4f34-bcd3-1ace2d5b61f3",
+  "versionCounter": 67,
+  "triggerCount": 3,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": "Version 9795eee2",
+    "description": ""
+  }
+}

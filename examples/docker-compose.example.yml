@@ -1,0 +1,25 @@
+version: '3.8'
+
+name: smartmail-demo
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:stable
+    container_name: n8n-smartmail
+    restart: unless-stopped
+    ports:
+      - "5679:5678"
+    volumes:
+      - ./files:/files
+      - n8n_demo_data:/home/node/.n8n
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=${N8N_PORT:-5678}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5679/}
+      - N8N_FILES_PATH=${N8N_FILES_PATH:-/files}
+    env_file:
+      - .env
+
+volumes:
+  n8n_demo_data:
+    driver: local

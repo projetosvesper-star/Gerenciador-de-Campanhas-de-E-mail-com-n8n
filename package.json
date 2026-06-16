@@ -1,0 +1,19 @@
+{
+  "name": "mala-direta-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automação para envio de e-mails em lote com n8n — Mala Direta",
+  "scripts": {
+    "validate": "node scripts/validate-public-workflow.js",
+    "sanitize": "node scripts/sanitize_workflow.js",
+    "security-scan": "powershell -ExecutionPolicy Bypass -File scripts/security-scan.ps1",
+    "generate-xlsx": "node scripts/generate-contacts-xlsx.js",
+    "prepare-demo": "node scripts/generate-contacts-xlsx.js && powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-files.ps1",
+    "render-panel": "node scripts/render-demo-panel.js",
+    "screenshots": "node scripts/generate-screenshots.js"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.0.0",
+    "xlsx": "^0.18.5"
+  }
+}

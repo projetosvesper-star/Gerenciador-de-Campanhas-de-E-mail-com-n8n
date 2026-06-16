@@ -1,0 +1,7 @@
+{
+  "parcelado_ativo": true,
+  "lote_quantidade": 5,
+  "intervalo_valor": 15,
+  "intervalo_unidade": "minutos",
+  "protecao_global": true
+}

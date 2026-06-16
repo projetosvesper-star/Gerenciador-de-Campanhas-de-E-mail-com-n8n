@@ -1,0 +1,26 @@
+[
+  {
+    "campanha_id": "c1f8e02d",
+    "assunto_snapshot": "Novidades e Atualizações de Junho",
+    "mensagem_texto_snapshot": "Olá {{nome}},\n\nAcompanhe as novidades e melhorias do nosso sistema neste mês.\n\nAtenciosamente,\nSuporte Técnico",
+    "contatos": [
+      {
+        "empresa": "Epsilon Logistica",
+        "email": "comercial@epsilon.example"
+      },
+      {
+        "empresa": "Zeta Construcoes",
+        "email": "suprimentos@zeta.example"
+      },
+      {
+        "empresa": "Eta Servicos",
+        "email": "rh@eta.example"
+      }
+    ],
+    "lote_quantidade": 2,
+    "intervalo_valor": 15,
+    "intervalo_unidade": "minutos",
+    "proxima_execucao": "2026-06-16T17:00:00.000Z",
+    "anexos_base64": []
+  }
+]

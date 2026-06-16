@@ -1,0 +1,40 @@
+# Bloquear arquivos de ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Bloquear arquivos reais de dados de producao
+*.xlsx
+*.xls
+*.csv
+*.jsonl
+files/
+data/
+logs/
+credentials/
+secrets/
+*.log
+*.bak
+*.tmp
+
+# Bloquear dependencias e pastas do sistema
+node_modules/
+.DS_Store
+Thumbs.db
+.system_generated/
+scratch/
+
+# Relatorio interno de auditoria (contem referencias de producao)
+AUDIT_INITIAL.md
+PORTFOLIO_COPY.md
+demo-data/panel-preview.html
+.env.screenshots
+.tmp-db.sqlite
+scripts/_query-db.py
+workflow/mala-direta-export.json
+
+# Permitir arquivos de exemplo e dados ficticios
+!demo-data/
+!demo-data/*.csv
+!demo-data/*.json
+!demo-data/*.xlsx
